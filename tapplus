@@ -1,4 +1,4 @@
-Where do I put this to run on my browser? python3 - << 'EOF'
+python3 - << 'EOF'
 content = open('/mnt/user-data/outputs/taptrack-ai.html', 'w')
 
 html = r'''<!DOCTYPE html>
