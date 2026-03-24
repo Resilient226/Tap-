@@ -1,449 +1,336 @@
-import { useState, useRef, useCallback } from “react”;
-
-const _t = Date.now(), H = 3600000;
-const mk = (h, r, pl, fb) => ({ ts: _t - H * h, rating: r, platform: pl || null, review: !!pl, feedback: fb || “” });
-
-const STAFF_DATA = [
-{ id: “marcus”, name: “Marcus J.”, color: “#00e5a0”, passcode: “1111”, streak: 3, lastDay: new Date().toDateString(),
-taps: [mk(1,5,“google”),mk(3,4,“yelp”),mk(6,5,null),mk(25,3,null,“Food was cold, waited 20 mins”),mk(26,5,“google”),mk(50,4,“google”),mk(73,2,null,“Wrong order, felt ignored”),mk(98,5,“google”),mk(99,4,“yelp”)] },
-{ id: “priya”, name: “Priya S.”, color: “#7c6aff”, passcode: “2222”, streak: 1, lastDay: new Date().toDateString(),
-taps: [mk(1,5,“google”),mk(3,4,null),mk(25,5,“yelp”),mk(48,3,null,“Waited too long for the bill”),mk(72,5,“google”),mk(96,1,null,“Very rude, completely ignored us”)] },
-{ id: “leo”, name: “Leo R.”, color: “#ff6b35”, passcode: “3333”, streak: 5, lastDay: new Date().toDateString(),
-taps: [mk(0.5,5,“google”),mk(2,5,“google”),mk(4,4,“yelp”),mk(24,5,“google”),mk(48,5,“google”),mk(49,3,null,“Order wrong but fixed quickly”),mk(72,5,“tripadvisor”),mk(96,5,“google”),mk(97,5,“yelp”)] },
-{ id: “dani”, name: “Dani K.”, color: “#ffd166”, passcode: “4444”, streak: 0, lastDay: null,
-taps: [mk(6,4,null),mk(30,3,null,“Slow during rush hour”),mk(54,2,null,“Had to ask 3 times for the check”),mk(78,4,“google”)] },
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>TapTrack AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Instrument+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#080a0f;--s1:#0f1118;--s2:#161b26;--border:rgba(255,255,255,0.07);--accent:#00e5a0;--a2:#ff6b35;--a3:#7c6aff;--gold:#ffd166;--text:#eef0f6;--muted:rgba(238,240,246,0.42);--danger:#ff4757;--ai:#a78bfa}
+html,body,#root{height:100%;background:var(--bg);color:var(--text);font-family:'Instrument Sans',sans-serif}
+body{overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 60% 40% at 15% 0%,rgba(0,229,160,0.05) 0%,transparent 55%),radial-gradient(ellipse 50% 40% at 85% 100%,rgba(167,139,250,0.07) 0%,transparent 55%);pointer-events:none;z-index:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+input,select{font-family:'Instrument Sans',sans-serif;color:var(--text)}
+input::placeholder{color:var(--muted)}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:2px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const{useState,useRef,useEffect,useCallback}=React;
+const _t=Date.now(),H=3600000;
+const mk=(h,r,pl,fb)=>({ts:_t-H*h,rating:r,platform:pl||null,review:!!pl,feedback:fb||""});
+const STAFF=[
+  {id:"marcus",name:"Marcus J.",color:"#00e5a0",passcode:"1111",streak:3,lastDay:new Date().toDateString(),taps:[mk(1,5,"google"),mk(3,4,"yelp"),mk(6,5,null),mk(25,3,null,"Food was cold, waited 20 mins"),mk(26,5,"google"),mk(50,4,"google"),mk(73,2,null,"Wrong order, felt ignored"),mk(98,5,"google"),mk(99,4,"yelp")]},
+  {id:"priya",name:"Priya S.",color:"#7c6aff",passcode:"2222",streak:1,lastDay:new Date().toDateString(),taps:[mk(1,5,"google"),mk(3,4,null),mk(25,5,"yelp"),mk(48,3,null,"Waited too long for the bill"),mk(72,5,"google"),mk(96,1,null,"Very rude, completely ignored us")]},
+  {id:"leo",name:"Leo R.",color:"#ff6b35",passcode:"3333",streak:5,lastDay:new Date().toDateString(),taps:[mk(0.5,5,"google"),mk(2,5,"google"),mk(4,4,"yelp"),mk(24,5,"google"),mk(48,5,"google"),mk(49,3,null,"Order wrong but fixed quickly"),mk(72,5,"tripadvisor"),mk(96,5,"google"),mk(97,5,"yelp")]},
+  {id:"dani",name:"Dani K.",color:"#ffd166",passcode:"4444",streak:0,lastDay:null,taps:[mk(6,4,null),mk(30,3,null,"Slow during rush hour"),mk(54,2,null,"Had to ask 3 times for the check"),mk(78,4,"google")]},
 ];
+const MGR_PIN="1234";
+const PLAT={google:"Google",yelp:"Yelp",tripadvisor:"Tripadvisor"};
+const GROQ_URL="https://api.groq.com/openai/v1/chat/completions";
+const GROQ_MODEL="llama-3.3-70b-versatile";
+const SYS="You are TapTrack AI, a restaurant performance analyst. Be specific with numbers. Use **bold**, ## headings, - bullets. Manager: analytical. Staff: encouraging and honest. Never invent data.";
 
-const MGR_PIN = “1234”;
-const PLAT = { google: “Google”, yelp: “Yelp”, tripadvisor: “Tripadvisor” };
-const GROQ_URL = “https://api.groq.com/openai/v1/chat/completions”;
-const GROQ_MODEL = “llama-3.3-70b-versatile”;
-const SYS = “You are TapTrack AI, a restaurant performance analyst. Be specific with numbers. Use **bold**, ## headings, - bullets. Manager: analytical. Staff: encouraging and direct. Never invent data.”;
-
-function initials(n) { return n.split(” “).map(w => w[0]).join(””).toUpperCase().slice(0, 2); }
-function fmtTime(ts) { const d = new Date(ts); return d.toLocaleTimeString([], { hour: “2-digit”, minute: “2-digit” }) + “, “ + d.toLocaleDateString([], { month: “short”, day: “numeric” }); }
-function weekStart() { const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - d.getDay()); return d.getTime(); }
-function getStats(s) {
-const taps = s.taps.length, reviews = s.taps.filter(t => t.review).length;
-const ratings = s.taps.map(t => t.rating);
-const avg = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
-const wt = s.taps.filter(t => t.ts >= weekStart()).length;
-const score = taps * 10 + reviews * 15 + ratings.filter(r => r === 5).length * 5;
-const pos = s.taps.filter(t => t.rating >= 4).length;
-const ctr = pos > 0 ? Math.round((reviews / pos) * 100) : 0;
-const negFb = s.taps.filter(t => t.feedback && t.rating <= 3);
-return { taps, reviews, ratings, avg, avgStr: avg ? avg.toFixed(1) : “—”, weekTaps: wt, score, ctr, negFb,
-gC: s.taps.filter(t => t.platform === “google”).length, yC: s.taps.filter(t => t.platform === “yelp”).length };
-}
-
-async function callGroq(prompt, key) {
-const r = await fetch(GROQ_URL, {
-method: “POST”,
-headers: { “Content-Type”: “application/json”, “Authorization”: `Bearer ${key}` },
-body: JSON.stringify({ model: GROQ_MODEL, messages: [{ role: “system”, content: SYS }, { role: “user”, content: prompt }], max_tokens: 900, temperature: 0.7 })
-});
-if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(r.status === 401 ? “INVALID_KEY” : e?.error?.message || “API error”); }
-const d = await r.json();
-return d.choices?.[0]?.message?.content || “”;
-}
-
-// Markdown renderer
-function Md({ text }) {
-return (
-<div style={{ fontSize: 14, lineHeight: 1.78, color: “rgba(238,240,246,0.88)” }}>
-{text.split(”\n”).map((line, i) => {
-const bold = s => s.replace(/**(.*?)**/g, (_, t) => `<strong style="color:#eef0f6;font-weight:600">${t}</strong>`);
-if (line.startsWith(”## “)) return <div key={i} style={{ fontFamily: “‘Syne’,sans-serif”, fontSize: 15, fontWeight: 800, margin: “14px 0 7px”, color: “#eef0f6” }}>{line.slice(3)}</div>;
-if (line.startsWith(”### “)) return <div key={i} style={{ fontFamily: “‘Syne’,sans-serif”, fontSize: 11, fontWeight: 700, color: “#a78bfa”, margin: “12px 0 5px”, textTransform: “uppercase”, letterSpacing: “0.08em” }}>{line.slice(4)}</div>;
-if (line.startsWith(”- “)) return <div key={i} style={{ display: “flex”, gap: 8, marginBottom: 6 }}><span style={{ color: “#a78bfa”, flexShrink: 0 }}>›</span><span dangerouslySetInnerHTML={{ __html: bold(line.slice(2)) }} /></div>;
-if (!line) return <br key={i} />;
-return <div key={i} dangerouslySetInnerHTML={{ __html: bold(line) }} />;
-})}
-</div>
-);
-}
-
-// AI Block with auto-run
-function AI({ prompt, apiKey, ckey, msg = “Thinking…” }) {
-const cache = useRef({});
-const [st, setSt] = useState(“idle”);
-const [text, setText] = useState(””);
-const [err, setErr] = useState(””);
-const ran = useRef(false);
-
-const run = useCallback(async (force = false) => {
-if (!apiKey) { setSt(“nokey”); return; }
-const k = ckey || prompt;
-if (!force && cache.current[k]) { setText(cache.current[k]); setSt(“done”); return; }
-setSt(“loading”); setErr(””);
-try {
-const t = await callGroq(prompt, apiKey);
-cache.current[k] = t; setText(t); setSt(“done”);
-} catch (e) { setErr(e.message); setSt(“err”); }
-}, [prompt, apiKey, ckey]);
-
-if (!ran.current && prompt && apiKey) { ran.current = true; run(); }
-
-const btnStyle = { background: “linear-gradient(135deg,rgba(167,139,250,0.2),rgba(129,140,248,0.2))”, border: “1px solid rgba(167,139,250,0.35)”, borderRadius: 12, padding: “11px 18px”, color: “#a78bfa”, fontFamily: “‘Syne’,sans-serif”, fontSize: 13, fontWeight: 700, cursor: “pointer” };
-
-if (!apiKey) return <div style={{ background: “rgba(255,107,53,0.08)”, border: “1px solid rgba(255,107,53,0.25)”, borderRadius: 12, padding: “13px 16px”, fontSize: 13, color: “#ff6b35”, lineHeight: 1.6 }}>⚠️ No Groq API key — go back to home and tap the status dot to add one.</div>;
-if (st === “idle”) return <button style={btnStyle} onClick={() => run()}>✦ Generate AI Analysis</button>;
-if (st === “loading”) return <div style={{ display: “flex”, alignItems: “center”, gap: 10, color: “rgba(238,240,246,0.4)”, fontSize: 13, padding: “18px 0” }}><div style={{ width: 18, height: 18, border: “2px solid rgba(167,139,250,0.2)”, borderTopColor: “#a78bfa”, borderRadius: “50%”, animation: “spin .7s linear infinite”, flexShrink: 0 }} />{msg}</div>;
-if (st === “err”) return <div><div style={{ color: “#ff4757”, fontSize: 13, marginBottom: 8 }}>{err === “INVALID_KEY” ? “❌ Invalid API key — update it from the home screen” : `❌ ${err}`}</div><button style={{ …btnStyle, fontSize: 11, padding: “6px 12px” }} onClick={() => run(true)}>↻ Retry</button></div>;
-return (
-<div style={{ background: “rgba(22,27,38,0.9)”, border: “1px solid rgba(167,139,250,0.2)”, borderRadius: 14, padding: 18, marginTop: 14, animation: “fadeIn .4s ease” }}>
-<div style={{ fontSize: 10, fontWeight: 600, letterSpacing: “0.15em”, textTransform: “uppercase”, color: “#a78bfa”, marginBottom: 10, display: “flex”, alignItems: “center”, gap: 6 }}>
-<span style={{ width: 6, height: 6, borderRadius: “50%”, background: “#a78bfa”, animation: “pulse 2s ease infinite”, display: “inline-block” }} /> AI Analysis
-</div>
-<Md text={text} />
-<button onClick={() => { delete cache.current[ckey || prompt]; run(true); }} style={{ marginTop: 10, fontSize: 11, color: “rgba(238,240,246,0.3)”, background: “none”, border: “none”, cursor: “pointer” }}>↻ Refresh</button>
-</div>
-);
-}
-
-// Shared components
-function Card({ icon, title, sub, children }) {
-return (
-<div style={{ background: “linear-gradient(135deg,rgba(167,139,250,0.06),rgba(129,140,248,0.03))”, border: “1px solid rgba(167,139,250,0.18)”, borderRadius: 20, padding: 22, position: “relative”, overflow: “hidden”, marginBottom: 16 }}>
-<div style={{ position: “absolute”, top: 0, left: 0, right: 0, height: 1, background: “linear-gradient(90deg,transparent,rgba(167,139,250,0.4),transparent)” }} />
-<div style={{ display: “flex”, alignItems: “center”, gap: 12, marginBottom: 16 }}>
-<div style={{ width: 38, height: 38, borderRadius: 11, background: “rgba(167,139,250,0.15)”, display: “flex”, alignItems: “center”, justifyContent: “center”, fontSize: 17, flexShrink: 0 }}>{icon}</div>
-<div><div style={{ fontFamily: “‘Syne’,sans-serif”, fontSize: 15, fontWeight: 800 }}>{title}</div>{sub && <div style={{ fontSize: 11, color: “rgba(238,240,246,0.4)”, marginTop: 2 }}>{sub}</div>}</div>
-</div>
-{children}
-</div>
-);
-}
-
-function StatBox({ v, l, c }) { return <div style={{ background: “#0f1118”, border: “1px solid rgba(255,255,255,0.07)”, borderRadius: 14, padding: “13px 10px”, textAlign: “center” }}><div style={{ fontFamily: “‘Syne’,sans-serif”, fontSize: 22, fontWeight: 800, lineHeight: 1, marginBottom: 4, color: c }}>{v}</div><div style={{ fontSize: 9, color: “rgba(238,240,246,0.4)”, letterSpacing: “0.08em”, textTransform: “uppercase” }}>{l}</div></div>; }
-function Dot() { return <span style={{ width: 6, height: 6, borderRadius: “50%”, background: “#a78bfa”, display: “inline-block”, animation: “pulse 2s ease infinite”, flexShrink: 0 }} />; }
-function Lbl({ children }) { return <div style={{ fontFamily: “‘Syne’,sans-serif”, fontSize: 10, fontWeight: 700, color: “rgba(238,240,246,0.4)”, letterSpacing: “0.12em”, textTransform: “uppercase”, marginBottom: 10 }}>{children}</div>; }
-
-// Pin pad
-function Pin({ title, sub, hint, dotColor, onBack, onOk }) {
-const [val, setVal] = useState(””), [err, setErr] = useState(””);
-const tap = k => {
-if (k === “C”) { setVal(””); setErr(””); return; }
-if (k === “⌫”) { setVal(v => v.slice(0, -1)); return; }
-if (val.length >= 4) return;
-const n = val + k; setVal(n);
-if (n.length === 4) setTimeout(() => { if (onOk(n)) setVal(””); else { setErr(“Incorrect. Try again.”); setVal(””); } }, 180);
-};
-return (
-<div style={{ display: “flex”, flexDirection: “column”, alignItems: “center”, justifyContent: “center”, minHeight: “100vh”, padding: “40px 20px”, textAlign: “center”, position: “relative”, zIndex: 1 }}>
-<button onClick={onBack} style={{ position: “absolute”, top: 20, left: 20, background: “none”, border: “none”, color: “rgba(238,240,246,0.4)”, fontSize: 22, cursor: “pointer” }}>←</button>
-<div style={{ fontFamily: “‘Syne’,sans-serif”, fontSize: 26, fontWeight: 800, marginBottom: 6 }}>{title}</div>
-<div style={{ color: “rgba(238,240,246,0.4)”, fontSize: 13, marginBottom: 32 }}>{sub}</div>
-<div style={{ display: “flex”, gap: 12, justifyContent: “center”, marginBottom: 24 }}>
-{[0,1,2,3].map(i => <div key={i} style={{ width: 14, height: 14, borderRadius: “50%”, border: `2px solid ${i < val.length ? dotColor : "rgba(255,255,255,0.18)"}`, background: i < val.length ? dotColor : “transparent”, transition: “all .2s” }} />)}
-</div>
-<div style={{ display: “grid”, gridTemplateColumns: “repeat(3,1fr)”, gap: 10, maxWidth: 220 }}>
-{[“1”,“2”,“3”,“4”,“5”,“6”,“7”,“8”,“9”,“C”,“0”,“⌫”].map(k => (
-<div key={k} onClick={() => tap(k)} style={{ background: “#0f1118”, border: “1px solid rgba(255,255,255,0.07)”, borderRadius: 13, padding: 17, fontFamily: “‘Syne’,sans-serif”, fontSize: k===“C”||k===“⌫”?13:20, fontWeight: 700, cursor: “pointer”, color: k===“C”?“rgba(238,240,246,0.4)”:”#eef0f6”, textAlign: “center”, userSelect: “none” }}>
-{k}
-</div>
-))}
-</div>
-<div style={{ color: “#ff4757”, fontSize: 13, marginTop: 14, minHeight: 18 }}>{err}</div>
-<div style={{ fontSize: 11, color: “rgba(238,240,246,0.35)”, marginTop: 18 }}>{hint}</div>
-</div>
-);
-}
-
-// Dash shell
-function Dash({ title, sub, tabs, activeTab, onTab, onExit, children }) {
-return (
-<div style={{ display: “flex”, flexDirection: “column”, minHeight: “100vh”, position: “relative”, zIndex: 1 }}>
-<div style={{ display: “flex”, alignItems: “center”, justifyContent: “space-between”, padding: “16px 22px”, borderBottom: “1px solid rgba(255,255,255,0.07)”, flexShrink: 0 }}>
-<div><div style={{ fontFamily: “‘Syne’,sans-serif”, fontSize: 16, fontWeight: 800 }}>{title}</div><div style={{ fontSize: 11, color: “rgba(238,240,246,0.4)”, marginTop: 2 }}>{sub}</div></div>
-<button onClick={onExit} style={{ background: “#161b26”, border: “none”, borderRadius: 10, color: “rgba(238,240,246,0.4)”, fontSize: 12, padding: “8px 14px”, cursor: “pointer” }}>← Exit</button>
-</div>
-<div style={{ display: “flex”, gap: 2, padding: “12px 22px 0”, borderBottom: “1px solid rgba(255,255,255,0.07)”, overflowX: “auto”, flexShrink: 0, scrollbarWidth: “none” }}>
-{tabs.map(t => <button key={t.id} onClick={() => onTab(t.id)} style={{ background: “none”, border: “none”, fontFamily: “‘Syne’,sans-serif”, fontSize: 11, fontWeight: 600, color: activeTab === t.id ? (t.ai ? “#a78bfa” : “#00e5a0”) : “rgba(238,240,246,0.4)”, cursor: “pointer”, padding: “9px 12px”, borderBottom: `2px solid ${activeTab === t.id ? (t.ai ? "#a78bfa" : "#00e5a0") : "transparent"}`, transition: “all .2s”, letterSpacing: “0.06em”, textTransform: “uppercase”, whiteSpace: “nowrap”, display: “flex”, alignItems: “center”, gap: 5 }}>
-{t.ai && <Dot />}{t.label}
-</button>)}
-</div>
-<div style={{ padding: “20px 22px”, overflowY: “auto”, flex: 1 }}>{children}</div>
-</div>
-);
-}
-
-// ── STAFF SCREENS ──────────────────────────────────────────────
-function StaffDash({ s, apiKey, onExit }) {
-const [tab, setTab] = useState(“coaching”);
-const st = getStats(s);
-const tabs = [{ id: “coaching”, label: “AI Coaching”, ai: true }, { id: “sentiment”, label: “My Feedback”, ai: true }, { id: “stats”, label: “My Stats” }];
-const allCtx = STAFF_DATA.map(x => { const xs = getStats(x); return `${x.name}: score ${xs.score}, CTR ${xs.ctr}%, avg ${xs.avgStr}★`; }).join(” | “);
-const fb = st.negFb.map(t => `"${t.feedback}" (${t.rating}★)`).join(”; “) || “none”;
-const coachPrompt = `Coach ${s.name.split(" ")[0]} directly (say "you"). Data: ${st.taps} taps, ${st.reviews} reviews, ${st.avgStr}★ avg, ${st.ctr}% CTR, score ${st.score}, 🔥${st.streak} streak, ${st.weekTaps} this week. Team: ${allCtx}. Their feedback: ${fb}. Write 3-4 tips: start with specific genuine compliment, give honest actionable improvements, end with motivating line. Under 250 words.`;
-const myFb = s.taps.filter(t => t.feedback && t.feedback.trim());
-const sentPrompt = myFb.length ? `Analyze feedback for ${s.name.split(" ")[0]} (speak to them directly).\n${myFb.map(t => `${t.rating}★: “${t.feedback}”`).join("\n")}\nGive: 1) Main theme 2) One specific change 3) Positive reframe. Kind and honest. Under 120 words.` : null;
-
-return (
-<Dash title={`${s.name.split(" ")[0]}'s Dashboard`} sub=“Powered by TapTrack AI” tabs={tabs} activeTab={tab} onTab={setTab} onExit={onExit}>
-{tab === “coaching” && <Card icon=“💬” title=“Your AI Coach” sub={`${st.taps} taps · ${st.avgStr}★ · ${st.ctr}% CTR · 🔥${st.streak} streak`}><AI prompt={coachPrompt} apiKey={apiKey} ckey={`sc_${s.id}`} msg=“Writing your coaching tips…” /></Card>}
-{tab === “sentiment” && <>
-<Card icon=“💭” title=“Your Customer Feedback” sub={`${myFb.length} feedback entries`}>
-{!myFb.length ? <div style={{ color: “#00e5a0”, fontSize: 13 }}>🎉 No negative feedback — customers love you!</div>
-: <AI prompt={sentPrompt} apiKey={apiKey} ckey={`ss_${s.id}`} msg=“Analyzing your feedback…” />}
-</Card>
-{myFb.length > 0 && <div>{<Lbl>Feedback Log</Lbl>}{myFb.map((t, i) => <div key={i} style={{ background: “#0f1118”, border: “1px solid rgba(255,71,87,0.18)”, borderRadius: 14, padding: “14px 16px”, marginBottom: 10 }}><div style={{ display: “flex”, justifyContent: “space-between”, marginBottom: 6 }}><div style={{ fontSize: 13 }}>{“⭐”.repeat(t.rating)}{“☆”.repeat(5 - t.rating)}</div><div style={{ fontSize: 11, color: “rgba(238,240,246,0.4)” }}>{fmtTime(t.ts)}</div></div><div style={{ fontSize: 13, color: “rgba(238,240,246,0.7)”, fontStyle: “italic” }}>”{t.feedback}”</div></div>)}</div>}
-</>}
-{tab === “stats” && <>
-<div style={{ display: “grid”, gridTemplateColumns: “repeat(3,1fr)”, gap: 10, marginBottom: 18 }}>
-{[[st.taps,“Total Taps”,s.color],[st.reviews,“Reviews”,”#ffd166”],[st.avgStr,“Avg Rating”,”#ff6b35”],[st.ctr+”%”,“CTR”,”#7c6aff”],[st.weekTaps,“This Week”,”#00e5a0”],[st.score,“Score”,”#ffd166”]].map(([v,l,c]) => <StatBox key={l} v={v} l={l} c={c} />)}
-</div>
-<Lbl>Recent Taps</Lbl>
-{[…s.taps].sort((a,b) => b.ts - a.ts).slice(0,8).map((t,i) => <div key={i} style={{ display: “flex”, alignItems: “flex-start”, padding: “10px 0”, borderBottom: “1px solid rgba(255,255,255,0.07)”, gap: 12 }}><div style={{ width: 7, height: 7, borderRadius: “50%”, background: t.rating<=3?”#ff4757”:”#00e5a0”, flexShrink: 0, marginTop: 5 }} /><div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{“⭐”.repeat(t.rating)}{t.review && <span style={{ fontSize: 10, fontWeight: 600, background: “rgba(0,229,160,0.1)”, color: “#00e5a0”, borderRadius: 5, padding: “2px 7px”, marginLeft: 5 }}>REVIEW ✓</span>}{t.platform && <span style={{ fontSize: 10, fontWeight: 600, background: “rgba(124,106,255,0.12)”, color: “#7c6aff”, borderRadius: 5, padding: “2px 7px”, marginLeft: 5 }}>{PLAT[t.platform]}</span>}</div><div style={{ fontSize: 11, color: “rgba(238,240,246,0.4)”, marginTop: 2 }}>{fmtTime(t.ts)}</div></div></div>)}
-</>}
-</Dash>
-);
-}
-
-// ── MANAGER SCREENS ────────────────────────────────────────────
-function MgrDash({ staff, apiKey, onExit }) {
-const [tab, setTab] = useState(“summary”);
-const tabs = [
-{ id: “summary”, label: “Weekly Summary”, ai: true }, { id: “coaching”, label: “Team Coaching”, ai: true },
-{ id: “feedback”, label: “Feedback Analysis”, ai: true }, { id: “goals”, label: “Smart Goals”, ai: true },
-{ id: “estimator”, label: “Rating Estimator”, ai: true }, { id: “leaderboard”, label: “Leaderboard” },
-{ id: “analytics”, label: “Analytics” }, { id: “export”, label: “Export Report”, ai: true },
-];
-
-const sd = staff.map(s => { const st = getStats(s); return `${s.name}: ${st.taps} taps, ${st.reviews} reviews, ${st.avgStr}★, ${st.ctr}% CTR, score ${st.score}, streak ${st.streak}d`; }).join(”\n”);
-const allFb = staff.flatMap(s => s.taps.filter(t => t.feedback).map(t => `${s.name} (${t.rating}★): "${t.feedback}"`)).join(”\n”);
-
-return (
-<Dash title="Manager Dashboard" sub="AI-powered · TapTrack" tabs={tabs} activeTab={tab} onTab={setTab} onExit={onExit}>
-{tab === “summary” && <Card icon=“🧠” title=“Weekly Performance Summary” sub={`${staff.length} staff · ${new Date().toLocaleDateString([], { month: "short", day: "numeric" })}`}><AI prompt={`Weekly summary for restaurant manager.\nTEAM:\n${sd}\nFEEDBACK:\n${allFb||"None"}\nCover: overall assessment, top performer (numbers), staff needing support + one suggestion, feedback patterns, one priority action. Under 280 words.`} apiKey={apiKey} ckey=“mgr_sum” msg=“Generating weekly summary…” /></Card>}
-{tab === “coaching” && <TeamCoaching staff={staff} apiKey={apiKey} />}
-{tab === “feedback” && <FeedbackTab staff={staff} apiKey={apiKey} />}
-{tab === “goals” && <Card icon="🎯" title="Smart Goal Suggestions" sub="Based on actual performance gaps"><AI prompt={`Suggest 5 smart goals for this restaurant team:\n${sd}\nFor each: specific target from real numbers, who it's for, time period (this week/month), one sentence on business impact.`} apiKey={apiKey} ckey=“mgr_goals” msg=“Identifying performance gaps…” /></Card>}
-{tab === “estimator” && <EstimatorTab staff={staff} apiKey={apiKey} />}
-{tab === “leaderboard” && <LBTab staff={staff} />}
-{tab === “analytics” && <AnalyticsTab staff={staff} />}
-{tab === “export” && <Card icon="📄" title="Full AI Performance Report" sub="Copy or print"><button onClick={() => window.print()} style={{ background: “#161b26”, border: “1px solid rgba(255,255,255,0.07)”, borderRadius: 10, padding: “9px 16px”, color: “rgba(238,240,246,0.5)”, fontFamily: “‘Syne’,sans-serif”, fontSize: 12, fontWeight: 700, cursor: “pointer”, marginBottom: 4 }}>🖨 Print / Save PDF</button><AI prompt={`Professional weekly performance report.\nDATE: ${new Date().toLocaleDateString([], { weekday: "long", year: "numeric", month: "long", day: "numeric" })}\nTEAM:\n${sd}\nFEEDBACK:\n${allFb||"None"}\nSections: ## Executive Summary / ## Individual Staff Performance / ## Customer Sentiment Analysis / ## Key Recommendations / ## Goals for Next Week. Professional, specific, suitable for ownership.`} apiKey={apiKey} ckey=“mgr_report” msg=“Writing full AI report…” /></Card>}
-</Dash>
-);
-}
-
-function TeamCoaching({ staff, apiKey }) {
-const [sel, setSel] = useState(staff[0].id);
-const s = staff.find(x => x.id === sel);
-const st = getStats(s);
-const ctx = staff.map(x => { const xs = getStats(x); return `${x.name}: score ${xs.score}, CTR ${xs.ctr}%, avg ${xs.avgStr}★`; }).join(” | “);
-const fb = st.negFb.map(t => `"${t.feedback}" (${t.rating}★)`).join(”; “) || “none”;
-return (
-<div>
-<div style={{ display: “flex”, gap: 8, flexWrap: “wrap”, marginBottom: 16 }}>
-{staff.map(x => <div key={x.id} onClick={() => setSel(x.id)} style={{ background: sel===x.id?“rgba(167,139,250,0.12)”:”#161b26”, border: `1px solid ${sel===x.id?"rgba(167,139,250,0.4)":"rgba(255,255,255,0.07)"}`, borderRadius: 100, padding: “7px 14px”, fontSize: 12, cursor: “pointer”, color: sel===x.id?”#a78bfa”:”#eef0f6”, display: “flex”, alignItems: “center”, gap: 6, transition: “all .15s” }}>
-<div style={{ width: 20, height: 20, borderRadius: “50%”, background: x.color+“22”, color: x.color, display: “flex”, alignItems: “center”, justifyContent: “center”, fontFamily: “‘Syne’,sans-serif”, fontSize: 8, fontWeight: 700 }}>{initials(x.name)}</div>
-{x.name.split(” “)[0]}
-</div>)}
-</div>
-<Card key={sel} icon=“👥” title={s.name} sub={`${st.taps} taps · ${st.avgStr}★ · ${st.ctr}% CTR · score ${st.score}`}>
-<AI prompt={`Manager coaching notes for ${s.name}. Stats: ${st.taps} taps, ${st.reviews} reviews, ${st.avgStr}★, ${st.ctr}% CTR, score ${st.score}, ${st.streak}-day streak, ${st.weekTaps} this week. Team: ${ctx}. Feedback about them: ${fb}. Give: 1) What they do well (specific data) 2) Biggest improvement opportunity 3) Coaching conversation starter 4) Suggested weekly goal with a number. Direct, practical. Under 220 words.`} apiKey={apiKey} ckey={`mgr_c_${sel}`} msg={`Coaching notes for ${s.name.split(" ")[0]}…`} />
-</Card>
-</div>
-);
-}
-
-function FeedbackTab({ staff, apiKey }) {
-const all = staff.flatMap(s => s.taps.filter(t => t.feedback && t.feedback.trim()).map(t => ({ …t, sName: s.name, sColor: s.color }))).sort((a,b) => b.ts - a.ts);
-const fbAI = all.map(f => `${f.sName} (${f.rating}★): "${f.feedback}"`).join(”\n”);
-const ss = r => r >= 4 ? { bg: “rgba(0,229,160,0.1)”, c: “#00e5a0”, l: “positive” } : r === 3 ? { bg: “rgba(255,209,102,0.1)”, c: “#ffd166”, l: “neutral” } : { bg: “rgba(255,71,87,0.1)”, c: “#ff4757”, l: “negative” };
-return (
-<div>
-<Card icon="🔍" title="Sentiment & Pattern Analysis" sub="AI reading of all private customer feedback">
-{!all.length ? <div style={{ color: “#00e5a0”, fontSize: 13 }}>No feedback yet.</div>
-: <AI prompt={`Analyze private NFC tap feedback:\n${fbAI}\nGive: 1) Overall sentiment 2) 2-3 recurring patterns 3) Operational issues to fix 4) Urgent flags 5) Positive signals. Reference actual text. Under 240 words.`} apiKey={apiKey} ckey=“mgr_fb” msg=“Analyzing feedback…” />}
-</Card>
-{all.length > 0 && <><Lbl>Raw Feedback ({all.length})</Lbl>{all.map((f,i) => { const s = ss(f.rating); return <div key={i} style={{ background: “#0f1118”, border: “1px solid rgba(255,71,87,0.18)”, borderRadius: 14, padding: “14px 16px”, marginBottom: 10 }}><div style={{ display: “flex”, justifyContent: “space-between”, alignItems: “center”, marginBottom: 6 }}><div style={{ fontFamily: “‘Syne’,sans-serif”, fontSize: 13, fontWeight: 700, color: f.sColor }}>{f.sName}</div><div style={{ display: “flex”, alignItems: “center”, gap: 8 }}><span style={{ background: s.bg, color: s.c, borderRadius: 5, padding: “2px 8px”, fontSize: 10, fontWeight: 600 }}>{s.l}</span><span style={{ fontSize: 11, color: “rgba(238,240,246,0.4)” }}>{fmtTime(f.ts)}</span></div></div><div style={{ fontSize: 13, marginBottom: 4 }}>{“⭐”.repeat(f.rating)}{“☆”.repeat(5-f.rating)}</div><div style={{ fontSize: 13, color: “rgba(238,240,246,0.7)”, fontStyle: “italic” }}>”{f.feedback}”</div></div>; })}</>}
-</div>
-);
-}
-
-function EstimatorTab({ staff, apiKey }) {
-const defAvg = (staff.flatMap(s => s.taps.map(t => t.rating)).reduce((a,b) => a+b, 0) / Math.max(1, staff.flatMap(s => s.taps).length)).toFixed(1);
-const [f, setF] = useState({ plat: “google”, count: “71”, cur: “4.2”, tgt: “4.5”, avg: defAvg });
-const [res, setRes] = useState(null);
-const inp = { width: “100%”, background: “#161b26”, border: “1px solid rgba(255,255,255,0.07)”, borderRadius: 10, padding: “11px 14px”, color: “#eef0f6”, fontFamily: “‘Instrument Sans’,sans-serif”, fontSize: 14, outline: “none”, marginBottom: 12 };
-const calc = () => {
-const c = parseInt(f.count)||0, cur = parseFloat(f.cur)||0, tgt = parseFloat(f.tgt)||0, avg = parseFloat(f.avg)||0;
-if (!c||!cur||!tgt||!avg) return;
-if (tgt <= cur) { setRes({ type: “done” }); return; }
-if (avg <= tgt) { setRes({ type: “low” }); return; }
-const n = Math.max(0, Math.ceil((tgt*(c+1) - cur*c) / (avg-tgt)));
-const taps = Math.ceil(n/0.65);
-const pace = Math.max(1, staff.flatMap(s=>s.taps).filter(t=>t.ts>=weekStart()).length);
-const wks = Math.ceil(taps/pace);
-setRes({ type: “calc”, n, taps, wks, pace, avg, prompt: `Restaurant wants ${f.plat} from ${cur}★ to ${tgt}★. Facts: ${c} reviews now, team avg ${avg}★ from NFC taps, ~${n} more 5★ reviews needed, ~${taps} taps at 65% CTR, pace ${pace} taps/week → ~${wks} weeks. Give: 1) Realistic timeframe 2) Key strategy 3) 2 tactics to accelerate 4) One risk. Under 180 words.` });
-};
-return (
-<Card icon="📈" title="Platform Rating Estimator" sub="How many taps & reviews to hit your target">
-<label style={{ fontSize: 11, fontWeight: 500, letterSpacing: “0.1em”, textTransform: “uppercase”, color: “rgba(238,240,246,0.4)”, marginBottom: 6, display: “block” }}>Platform</label>
-<select value={f.plat} onChange={e => setF(p => ({…p, plat: e.target.value}))} style={{ …inp, cursor: “pointer” }}><option value="google">Google Reviews</option><option value="yelp">Yelp</option><option value="tripadvisor">Tripadvisor</option></select>
-{[[“count”,“Current Review Count”,“71”],[“cur”,“Current Rating”,“4.2”],[“tgt”,“Target Rating”,“4.5”],[“avg”,“Team Avg Rating (from tap data)”,””]].map(([k,l,p]) => <div key={k}><label style={{ fontSize: 11, fontWeight: 500, letterSpacing: “0.1em”, textTransform: “uppercase”, color: “rgba(238,240,246,0.4)”, marginBottom: 6, display: “block” }}>{l}</label><input type=“number” step=“0.1” placeholder={p} value={f[k]} onChange={e => setF(p => ({…p,[k]:e.target.value}))} style={inp} /></div>)}
-<button onClick={calc} style={{ width: “100%”, padding: 13, background: “linear-gradient(135deg,rgba(167,139,250,0.2),rgba(129,140,248,0.2))”, border: “1px solid rgba(167,139,250,0.35)”, borderRadius: 12, color: “#a78bfa”, fontFamily: “‘Syne’,sans-serif”, fontSize: 14, fontWeight: 700, cursor: “pointer” }}>✦ Calculate & Predict</button>
-{res && <div style={{ marginTop: 14 }}>
-{res.type === “done” && <div style={{ color: “#ffd166”, fontSize: 13, textAlign: “center”, padding: “10px 0” }}>✓ Already at or above your target!</div>}
-{res.type === “low” && <div style={{ color: “#ff6b35”, fontSize: 13, lineHeight: 1.6 }}>⚠️ Team avg is at or below the target — focus on improving service quality first.</div>}
-{res.type === “calc” && <>
-<div style={{ display: “grid”, gridTemplateColumns: “repeat(2,1fr)”, gap: 10, marginBottom: 14 }}>
-{[[res.n,“5★ reviews needed”,”#00e5a0”],[res.taps,“Est. taps needed”,”#ffd166”],[res.wks+“w”,“At current pace”,”#7c6aff”],[res.avg+“★”,“Team avg (tap data)”,”#ff6b35”]].map(([v,l,c]) => <div key={l} style={{ background: “#0f1118”, border: “1px solid rgba(255,255,255,0.07)”, borderRadius: 14, padding: 16, textAlign: “center” }}><div style={{ fontFamily: “‘Syne’,sans-serif”, fontSize: 26, fontWeight: 800, lineHeight: 1, marginBottom: 4, color: c }}>{v}</div><div style={{ fontSize: 10, color: “rgba(238,240,246,0.4)” }}>{l}</div></div>)}
-</div>
-<AI key={res.prompt.slice(0,40)} prompt={res.prompt} apiKey={apiKey} ckey={`est_${f.plat}_${f.cur}_${f.tgt}`} msg=“Running AI prediction…” />
-</>}
-</div>}
-</Card>
-);
-}
-
-function LBTab({ staff }) {
-const sorted = […staff].map(s => ({ s, st: getStats(s) })).sort((a,b) => b.st.score - a.st.score);
-const wk = […staff].map(s => ({ s, w: getStats(s).weekTaps })).sort((a,b) => b.w - a.w)[0];
-return (
-<div>
-<div style={{ background: “linear-gradient(135deg,rgba(167,139,250,0.1),rgba(129,140,248,0.06))”, border: “1px solid rgba(167,139,250,0.2)”, borderRadius: 14, padding: “14px 18px”, marginBottom: 18, display: “flex”, alignItems: “center”, gap: 12 }}>
-<span style={{ fontSize: 24 }}>🏆</span>
-<div><div style={{ fontFamily: “‘Syne’,sans-serif”, fontSize: 13, fontWeight: 700, marginBottom: 2 }}>This Week: {wk.s.name}</div><div style={{ fontSize: 11, color: “rgba(238,240,246,0.4)” }}>{wk.w} taps · Resets Monday</div></div>
-</div>
-{sorted.map(({ s, st }, i) => (
-<div key={s.id} style={{ display: “flex”, alignItems: “center”, background: “#0f1118”, border: `1px solid ${["rgba(255,209,102,0.35)","rgba(200,200,200,0.25)","rgba(205,127,50,0.25)"][i]||"rgba(255,255,255,0.07)"}`, borderRadius: 16, padding: “14px 18px”, gap: 14, marginBottom: 10 }}>
-<div style={{ fontFamily: “‘Syne’,sans-serif”, fontSize: 17, fontWeight: 800, width: 26, textAlign: “center”, flexShrink: 0 }}>{[“🥇”,“🥈”,“🥉”][i]||i+1}</div>
-<div style={{ width: 42, height: 42, borderRadius: “50%”, background: s.color+“22”, color: s.color, display: “flex”, alignItems: “center”, justifyContent: “center”, fontFamily: “‘Syne’,sans-serif”, fontSize: 16, fontWeight: 700, flexShrink: 0 }}>{initials(s.name)}</div>
-<div style={{ flex: 1 }}><div style={{ fontFamily: “‘Syne’,sans-serif”, fontSize: 14, fontWeight: 700, marginBottom: 3 }}>{s.name}</div><div style={{ fontSize: 11, color: “rgba(238,240,246,0.4)” }}>{st.taps} taps · {st.reviews} reviews · {st.avgStr}⭐ · CTR {st.ctr}% · 🔥{s.streak}</div></div>
-<div style={{ textAlign: “right” }}><div style={{ fontFamily: “‘Syne’,sans-serif”, fontSize: 21, fontWeight: 800, color: “#00e5a0”, lineHeight: 1 }}>{st.score}</div><div style={{ fontSize: 9, color: “rgba(238,240,246,0.4)”, letterSpacing: “0.08em”, textTransform: “uppercase” }}>pts</div></div>
-</div>
-))}
-<div style={{ marginTop: 14, fontSize: 11, color: “rgba(238,240,246,0.4)” }}>Score = Taps×10 + Reviews×15 + 5★×5</div>
-</div>
-);
-}
-
-function AnalyticsTab({ staff }) {
-const all = staff.flatMap(s => s.taps);
-const tot = all.length, revs = all.filter(t=>t.review).length;
-const avg = all.length ? (all.reduce((a,t)=>a+t.rating,0)/all.length).toFixed(1) : “—”;
-const pos = all.filter(t=>t.rating>=4).length, neg = all.filter(t=>t.rating<=3).length;
-const ctr = pos > 0 ? Math.round((revs/pos)*100) : 0;
-const gT = all.filter(t=>t.platform===“google”).length, yT = all.filter(t=>t.platform===“yelp”).length, tT = all.filter(t=>t.platform===“tripadvisor”).length;
-const mx = Math.max(…staff.map(s=>s.taps.length), 1);
-const cs = { background: “#0f1118”, border: “1px solid rgba(255,255,255,0.07)”, borderRadius: 16, padding: 18, marginBottom: 12 };
-return (
-<div>
-<div style={{ display: “grid”, gridTemplateColumns: “repeat(2,1fr)”, gap: 12, marginBottom: 12 }}>
-{[[tot,“Total Taps”,”#00e5a0”],[revs,“Reviews Driven”,”#ffd166”],[avg+“⭐”,“Avg Rating”,”#ff6b35”],[ctr+”%”,“Overall CTR”,”#7c6aff”],[pos,“Positive (4–5★)”,”#00e5a0”],[neg,“Negative (1–3★)”,”#ff4757”]].map(([v,l,c]) => <div key={l} style={cs}><div style={{ fontFamily: “‘Syne’,sans-serif”, fontSize: 30, fontWeight: 800, lineHeight: 1, marginBottom: 5, color: c }}>{v}</div><div style={{ fontSize: 11, color: “rgba(238,240,246,0.4)” }}>{l}</div></div>)}
-</div>
-<div style={cs}>
-<div style={{ fontSize: 11, color: “rgba(238,240,246,0.4)”, marginBottom: 10 }}>Platform Breakdown</div>
-<div style={{ display: “grid”, gridTemplateColumns: “repeat(3,1fr)”, gap: 10 }}>
-{[[“🔍”,gT,”#00e5a0”,“Google”],[“⭐”,yT,”#ffd166”,“Yelp”],[“✈️”,tT,”#7c6aff”,“Tripadvisor”]].map(([icon,n,c,l]) => <div key={l} style={{ background: “#161b26”, borderRadius: 10, padding: 12, textAlign: “center” }}><div style={{ fontSize: 18, marginBottom: 3 }}>{icon}</div><div style={{ fontFamily: “‘Syne’,sans-serif”, fontSize: 22, fontWeight: 800, color: c }}>{n}</div><div style={{ fontSize: 10, color: “rgba(238,240,246,0.4)”, textTransform: “uppercase”, letterSpacing: “0.08em”, marginTop: 2 }}>{l}</div></div>)}
-</div>
-</div>
-{[[“Taps Per Staff”,staff.map(s=>[s.name,s.taps.length,s.color,mx,s.taps.length]),true],[“Review CTR”,staff.map(s=>{const st=getStats(s);return[s.name,st.ctr,null,100,st.ctr+”%”];}),false]].map(([ttl,rows,useColor]) => (
-<div key={ttl} style={cs}>
-<div style={{ fontSize: 11, color: “rgba(238,240,246,0.4)”, marginBottom: 8 }}>{ttl}</div>
-{rows.map(([nm,v,c,mx2,lbl]) => <div key={nm} style={{ display: “flex”, alignItems: “center”, gap: 10, marginBottom: 9 }}>
-<div style={{ fontSize: 11, width: 60, flexShrink: 0, overflow: “hidden”, textOverflow: “ellipsis”, whiteSpace: “nowrap” }}>{nm.split(” “)[0]}</div>
-<div style={{ flex: 1, height: 7, background: “rgba(255,255,255,0.05)”, borderRadius: 4, overflow: “hidden” }}><div style={{ height: “100%”, borderRadius: 4, width: Math.round(v/mx2*100)+”%”, background: c||“linear-gradient(90deg,#00e5a0,#7c6aff)” }} /></div>
-<div style={{ fontSize: 11, fontWeight: 600, width: 32, textAlign: “right”, flexShrink: 0, color: c||”#00e5a0” }}>{lbl}</div>
-</div>)}
-</div>
-))}
-</div>
-);
-}
-
-// ── APP ROOT ───────────────────────────────────────────────────
-export default function App() {
-const [screen, setScreen] = useState(“hub”);
-const [apiKey, setApiKey] = useState(””);
-const [keyInput, setKeyInput] = useState(””);
-const [keyErr, setKeyErr] = useState(””);
-const [testing, setTesting] = useState(false);
-const [currentStaff, setCurrentStaff] = useState(null);
-
-const testKey = async () => {
-const k = keyInput.trim();
-if (!k.startsWith(“gsk_”)) { setKeyErr(“Groq keys start with gsk_ — check your key”); return; }
-setTesting(true); setKeyErr(””);
-try { await callGroq(“Reply with one word: ready”, k); setApiKey(k); setScreen(“hub”); }
-catch (e) { setKeyErr(e.message === “INVALID_KEY” ? “Invalid key — please double-check it” : “Connection failed — check your internet”); }
-setTesting(false);
+const ini=n=>n.split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
+const fmt=ts=>{const d=new Date(ts);return d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})+", "+d.toLocaleDateString([],{month:"short",day:"numeric"});};
+const ws=()=>{const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-d.getDay());return d.getTime();};
+const getStats=s=>{
+  const taps=s.taps.length,reviews=s.taps.filter(t=>t.review).length;
+  const ratings=s.taps.map(t=>t.rating);
+  const avg=ratings.length?ratings.reduce((a,b)=>a+b,0)/ratings.length:0;
+  const wt=s.taps.filter(t=>t.ts>=ws()).length;
+  const score=taps*10+reviews*15+ratings.filter(r=>r===5).length*5;
+  const pos=s.taps.filter(t=>t.rating>=4).length;
+  const ctr=pos>0?Math.round((reviews/pos)*100):0;
+  return{taps,reviews,ratings,avg,avgStr:avg?avg.toFixed(1):"—",weekTaps:wt,score,ctr,
+    gC:s.taps.filter(t=>t.platform==="google").length,
+    yC:s.taps.filter(t=>t.platform==="yelp").length,
+    negFb:s.taps.filter(t=>t.feedback&&t.rating<=3)};
 };
 
-const bg = “#080a0f”, s1 = “#0f1118”, s2 = “#161b26”;
-
-return (
-<>
-<style>{`@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Instrument+Sans:wght@300;400;500&display=swap'); *{box-sizing:border-box;margin:0;padding:0} body{background:${bg};color:#eef0f6;font-family:'Instrument Sans',sans-serif;min-height:100vh} @keyframes spin{to{transform:rotate(360deg)}} @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}} @keyframes fadeIn{from{opacity:0}to{opacity:1}} input,select{color:#eef0f6;background:${s2}} input::placeholder{color:rgba(238,240,246,0.35)} ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:2px}`}</style>
-<div style={{ minHeight: “100vh”, background: bg, position: “relative” }}>
-<div style={{ position: “fixed”, inset: 0, background: “radial-gradient(ellipse 60% 40% at 15% 0%,rgba(0,229,160,0.05) 0%,transparent 55%),radial-gradient(ellipse 50% 40% at 85% 100%,rgba(167,139,250,0.07) 0%,transparent 55%)”, pointerEvents: “none”, zIndex: 0 }} />
-
-```
-    {/* SETUP */}
-    {screen === "setup" && (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "40px 20px", textAlign: "center", position: "relative", zIndex: 1 }}>
-        <div style={{ fontFamily: "'Syne',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.32em", textTransform: "uppercase", color: "#a78bfa", opacity: 0.8, marginBottom: 22 }}>TapTrack AI</div>
-        <div style={{ fontFamily: "'Syne',sans-serif", fontSize: "clamp(24px,5vw,36px)", fontWeight: 800, lineHeight: 1.1, marginBottom: 10 }}>Connect your <span style={{ background: "linear-gradient(135deg,#a78bfa,#00e5a0)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>free AI</span></div>
-        <div style={{ color: "rgba(238,240,246,0.45)", fontSize: 14, marginBottom: 28, lineHeight: 1.7, maxWidth: 320 }}>You need a free Groq key. No credit card required — takes 2 minutes.</div>
-        <div style={{ background: s1, border: "1px solid rgba(167,139,250,0.2)", borderRadius: 22, padding: "24px 22px", width: "100%", maxWidth: 420, textAlign: "left" }}>
-          <div style={{ background: s2, borderRadius: 12, padding: 16, marginBottom: 18 }}>
-            {[["1", <>Go to <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" style={{ color: "#00e5a0", textDecoration: "none" }}>console.groq.com/keys</a></>],
-              ["2", "Click Create API Key"],
-              ["3", <><strong style={{ color: "#eef0f6" }}>Copy the key</strong> — it starts with gsk_</>]
-            ].map(([n, content]) => <div key={n} style={{ display: "flex", gap: 10, marginBottom: n!=="3"?10:0, fontSize: 13, color: "rgba(238,240,246,0.55)", alignItems: "flex-start" }}>
-              <div style={{ width: 20, height: 20, borderRadius: "50%", background: "rgba(167,139,250,0.2)", color: "#a78bfa", fontFamily: "'Syne',sans-serif", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>{n}</div>
-              <span>{content}</span>
-            </div>)}
-          </div>
-          <input value={keyInput} onChange={e => { setKeyInput(e.target.value); setKeyErr(""); }} onKeyDown={e => e.key === "Enter" && testKey()}
-            placeholder="Paste your key here (gsk_…)"
-            style={{ width: "100%", background: s2, border: `1px solid ${keyErr?"#ff4757":"rgba(255,255,255,0.07)"}`, borderRadius: 10, padding: "13px 14px", color: "#eef0f6", fontFamily: "'Instrument Sans',sans-serif", fontSize: 14, outline: "none", marginBottom: 8 }} />
-          {keyErr && <div style={{ color: "#ff4757", fontSize: 12, marginBottom: 8 }}>{keyErr}</div>}
-          <button onClick={testKey} disabled={testing || !keyInput.trim()} style={{ width: "100%", padding: 14, background: "linear-gradient(135deg,rgba(167,139,250,0.25),rgba(129,140,248,0.25))", border: "1px solid rgba(167,139,250,0.4)", borderRadius: 12, color: testing?"rgba(167,139,250,0.5)":"#a78bfa", fontFamily: "'Syne',sans-serif", fontSize: 14, fontWeight: 700, cursor: testing?"not-allowed":"pointer" }}>
-            {testing ? "Testing connection…" : "✦ Connect & Continue"}
-          </button>
-          <div onClick={() => setScreen("hub")} style={{ fontSize: 12, color: "rgba(238,240,246,0.3)", textAlign: "center", marginTop: 14, cursor: "pointer", textDecoration: "underline" }}>Skip — use app without AI</div>
-        </div>
-      </div>
-    )}
-
-    {/* HUB */}
-    {screen === "hub" && (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "40px 20px", textAlign: "center", position: "relative", zIndex: 1 }}>
-        <div style={{ fontFamily: "'Syne',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.32em", textTransform: "uppercase", color: "#a78bfa", opacity: 0.8, marginBottom: 28 }}>TapTrack ✦ AI</div>
-        <div style={{ fontFamily: "'Syne',sans-serif", fontSize: "clamp(36px,8vw,52px)", fontWeight: 800, lineHeight: 1.02, letterSpacing: "-0.03em", marginBottom: 10 }}>
-          Your <span style={{ background: "linear-gradient(135deg,#a78bfa,#00e5a0)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>team</span><br />at a glance
-        </div>
-        <div style={{ color: "rgba(238,240,246,0.4)", fontSize: 14, marginBottom: 40, lineHeight: 1.7, maxWidth: 290 }}>NFC-powered reviews, real-time coaching, and AI insights for every shift.</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, width: "100%", maxWidth: 380, marginBottom: 20 }}>
-          {[{ label: "Staff Login", sub: "Your stats, AI coaching & personal feedback", icon: "👤", iBg: "rgba(0,229,160,0.1)", hov: "rgba(0,229,160,0.4)", go: () => setScreen("staff-login") },
-            { label: "Manager Login", sub: "Analytics, AI tools, team coaching & settings", icon: "⚙️", iBg: "rgba(167,139,250,0.1)", hov: "rgba(167,139,250,0.4)", go: () => setScreen("mgr-pin") }
-          ].map(btn => (
-            <div key={btn.label} onClick={btn.go} onMouseEnter={e=>{e.currentTarget.style.borderColor=btn.hov;e.currentTarget.style.transform="translateY(-2px)"}} onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.07)";e.currentTarget.style.transform="none"}}
-              style={{ display: "flex", alignItems: "center", gap: 16, background: s1, border: "1px solid rgba(255,255,255,0.07)", borderRadius: 20, padding: "22px 24px", cursor: "pointer", transition: "all .22s", textAlign: "left" }}>
-              <div style={{ width: 48, height: 48, borderRadius: 14, background: btn.iBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>{btn.icon}</div>
-              <div style={{ flex: 1 }}><div style={{ fontFamily: "'Syne',sans-serif", fontSize: 16, fontWeight: 800, marginBottom: 4 }}>{btn.label}</div><div style={{ fontSize: 12, color: "rgba(238,240,246,0.45)", lineHeight: 1.5 }}>{btn.sub}</div></div>
-              <div style={{ fontSize: 18, color: "rgba(238,240,246,0.3)" }}>→</div>
-            </div>
-          ))}
-        </div>
-        <div onClick={() => setScreen("setup")} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", color: apiKey ? "#00e5a0" : "rgba(238,240,246,0.3)", transition: "color .2s" }}>
-          <div style={{ width: 7, height: 7, borderRadius: "50%", background: apiKey ? "#00e5a0" : "rgba(238,240,246,0.2)" }} />
-          {apiKey ? "AI connected via Groq ✓" : "AI not connected — tap to set up"}
-        </div>
-      </div>
-    )}
-
-    {screen === "staff-login" && <Pin title="Staff Login" sub="Enter your 4-digit passcode" hint="Your passcode is set by your manager" dotColor="#7c6aff" onBack={() => setScreen("hub")} onOk={v => { const f = STAFF_DATA.find(s => s.passcode === v); if (f) { setCurrentStaff(f); setScreen("staff"); return true; } return false; }} />}
-    {screen === "mgr-pin" && <Pin title="Manager Login" sub="Enter your 4-digit PIN" hint="Default PIN: 1234" dotColor="#00e5a0" onBack={() => setScreen("hub")} onOk={v => { if (v === MGR_PIN) { setScreen("mgr"); return true; } return false; }} />}
-    {screen === "staff" && currentStaff && <StaffDash s={currentStaff} apiKey={apiKey} onExit={() => { setScreen("hub"); setCurrentStaff(null); }} />}
-    {screen === "mgr" && <MgrDash staff={STAFF_DATA} apiKey={apiKey} onExit={() => setScreen("hub")} />}
-  </div>
-</>
-```
-
-);
+async function callGroq(prompt,key){
+  const r=await fetch(GROQ_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${key}`},body:JSON.stringify({model:GROQ_MODEL,messages:[{role:"system",content:SYS},{role:"user",content:prompt}],max_tokens:900,temperature:0.7})});
+  if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(r.status===401?"INVALID_KEY":e?.error?.message||"API error");}
+  const d=await r.json();return d.choices?.[0]?.message?.content||"";
 }
+
+function Md({text}){
+  const bold=s=>s.replace(/\*\*(.*?)\*\*/g,(_,t)=>`<strong style="color:#eef0f6;font-weight:600">${t}</strong>`);
+  return React.createElement("div",{style:{fontSize:14,lineHeight:1.78,color:"rgba(238,240,246,0.88)"}},
+    text.split("\n").map((line,i)=>{
+      if(line.startsWith("## "))return React.createElement("div",{key:i,style:{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:800,margin:"14px 0 7px",color:"#eef0f6"}},line.slice(3));
+      if(line.startsWith("### "))return React.createElement("div",{key:i,style:{fontFamily:"'Syne',sans-serif",fontSize:11,fontWeight:700,color:"#a78bfa",margin:"12px 0 5px",textTransform:"uppercase",letterSpacing:"0.08em"}},line.slice(4));
+      if(line.startsWith("- "))return React.createElement("div",{key:i,style:{display:"flex",gap:8,marginBottom:6}},React.createElement("span",{style:{color:"#a78bfa",flexShrink:0}},"›"),React.createElement("span",{dangerouslySetInnerHTML:{__html:bold(line.slice(2))}}));
+      if(!line)return React.createElement("br",{key:i});
+      return React.createElement("div",{key:i,dangerouslySetInnerHTML:{__html:bold(line)}});
+    })
+  );
+}
+
+function AI({prompt,apiKey,ckey,msg="Thinking…"}){
+  const cache=useRef({});
+  const[st,setSt]=useState("idle");
+  const[text,setText]=useState("");
+  const[err,setErr]=useState("");
+  const ran=useRef(false);
+  const run=useCallback(async(force=false)=>{
+    if(!apiKey){setSt("nokey");return;}
+    const k=ckey||prompt.slice(0,60);
+    if(!force&&cache.current[k]){setText(cache.current[k]);setSt("done");return;}
+    setSt("loading");setErr("");
+    try{const t=await callGroq(prompt,apiKey);cache.current[k]=t;setText(t);setSt("done");}
+    catch(e){setErr(e.message);setSt("err");}
+  },[prompt,apiKey,ckey]);
+  useEffect(()=>{if(!ran.current&&prompt&&apiKey){ran.current=true;run();}},[]);
+  const btn={background:"linear-gradient(135deg,rgba(167,139,250,0.2),rgba(129,140,248,0.2))",border:"1px solid rgba(167,139,250,0.35)",borderRadius:12,padding:"11px 18px",color:"#a78bfa",fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"};
+  if(!apiKey||st==="nokey")return React.createElement("div",{style:{background:"rgba(255,107,53,0.08)",border:"1px solid rgba(255,107,53,0.25)",borderRadius:12,padding:"13px 16px",fontSize:13,color:"#ff6b35",lineHeight:1.6}},"⚠️ No Groq API key — go back home and tap the status dot to add one.");
+  if(st==="idle")return React.createElement("button",{style:btn,onClick:()=>run()},"✦ Generate AI Analysis");
+  if(st==="loading")return React.createElement("div",{style:{display:"flex",alignItems:"center",gap:10,color:"rgba(238,240,246,0.4)",fontSize:13,padding:"18px 0"}},React.createElement("div",{style:{width:18,height:18,border:"2px solid rgba(167,139,250,0.2)",borderTopColor:"#a78bfa",borderRadius:"50%",animation:"spin .7s linear infinite",flexShrink:0}}),msg);
+  if(st==="err")return React.createElement("div",null,React.createElement("div",{style:{color:"#ff4757",fontSize:13,marginBottom:8}},err==="INVALID_KEY"?"❌ Invalid API key — update from home screen":`❌ ${err}`),React.createElement("button",{style:{...btn,fontSize:11,padding:"6px 12px"},onClick:()=>run(true)},"↻ Retry"));
+  return React.createElement("div",{style:{background:"rgba(22,27,38,0.9)",border:"1px solid rgba(167,139,250,0.2)",borderRadius:14,padding:18,marginTop:14,animation:"fadeIn .4s ease"}},
+    React.createElement("div",{style:{fontSize:10,fontWeight:600,letterSpacing:"0.15em",textTransform:"uppercase",color:"#a78bfa",marginBottom:10,display:"flex",alignItems:"center",gap:6}},React.createElement("span",{style:{width:6,height:6,borderRadius:"50%",background:"#a78bfa",animation:"pulse 2s ease infinite",display:"inline-block"}}),"AI Analysis"),
+    React.createElement(Md,{text}),
+    React.createElement("button",{onClick:()=>{delete cache.current[ckey||prompt.slice(0,60)];run(true);},style:{marginTop:10,fontSize:11,color:"rgba(238,240,246,0.3)",background:"none",border:"none",cursor:"pointer"}},"↻ Refresh")
+  );
+}
+
+const S1="#0f1118",S2="#161b26";
+function Card({icon,title,sub,children}){
+  return React.createElement("div",{style:{background:"linear-gradient(135deg,rgba(167,139,250,0.06),rgba(129,140,248,0.03))",border:"1px solid rgba(167,139,250,0.18)",borderRadius:20,padding:22,position:"relative",overflow:"hidden",marginBottom:16}},
+    React.createElement("div",{style:{position:"absolute",top:0,left:0,right:0,height:1,background:"linear-gradient(90deg,transparent,rgba(167,139,250,0.4),transparent)"}}),
+    React.createElement("div",{style:{display:"flex",alignItems:"center",gap:12,marginBottom:16}},
+      React.createElement("div",{style:{width:38,height:38,borderRadius:11,background:"rgba(167,139,250,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}},icon),
+      React.createElement("div",null,React.createElement("div",{style:{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:800}},title),sub&&React.createElement("div",{style:{fontSize:11,color:"rgba(238,240,246,0.4)",marginTop:2}},sub))
+    ),children
+  );
+}
+function SBox({v,l,c}){return React.createElement("div",{style:{background:S1,border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"13px 10px",textAlign:"center"}},React.createElement("div",{style:{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:800,lineHeight:1,marginBottom:4,color:c}},v),React.createElement("div",{style:{fontSize:9,color:"rgba(238,240,246,0.4)",letterSpacing:"0.08em",textTransform:"uppercase"}},l));}
+function Dot(){return React.createElement("span",{style:{width:6,height:6,borderRadius:"50%",background:"#a78bfa",display:"inline-block",animation:"pulse 2s ease infinite",flexShrink:0}});}
+function Lbl({children}){return React.createElement("div",{style:{fontFamily:"'Syne',sans-serif",fontSize:10,fontWeight:700,color:"rgba(238,240,246,0.4)",letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:10}},children);}
+
+function Pin({title,sub,hint,dotColor,onBack,onOk}){
+  const[val,setVal]=useState(""); const[err,setErr]=useState("");
+  const tap=k=>{
+    if(k==="C"){setVal("");setErr("");return;}
+    if(k==="⌫"){setVal(v=>v.slice(0,-1));return;}
+    if(val.length>=4)return;
+    const n=val+k;setVal(n);
+    if(n.length===4)setTimeout(()=>{if(onOk(n))setVal("");else{setErr("Incorrect. Try again.");setVal("");}},180);
+  };
+  const ks={background:S1,border:"1px solid rgba(255,255,255,0.07)",borderRadius:13,padding:17,fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:700,cursor:"pointer",color:"#eef0f6",textAlign:"center",userSelect:"none",WebkitUserSelect:"none"};
+  return React.createElement("div",{style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"100vh",padding:"40px 20px",textAlign:"center",position:"relative",zIndex:1}},
+    React.createElement("button",{onClick:onBack,style:{position:"absolute",top:20,left:20,background:"none",border:"none",color:"rgba(238,240,246,0.4)",fontSize:22,cursor:"pointer"}},"←"),
+    React.createElement("div",{style:{fontFamily:"'Syne',sans-serif",fontSize:26,fontWeight:800,marginBottom:6}},title),
+    React.createElement("div",{style:{color:"rgba(238,240,246,0.4)",fontSize:13,marginBottom:32}},sub),
+    React.createElement("div",{style:{display:"flex",gap:12,justifyContent:"center",marginBottom:24}},[0,1,2,3].map(i=>React.createElement("div",{key:i,style:{width:14,height:14,borderRadius:"50%",border:`2px solid ${i<val.length?dotColor:"rgba(255,255,255,0.18)"}`,background:i<val.length?dotColor:"transparent",transition:"all .2s"}}))),
+    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,maxWidth:220}},["1","2","3","4","5","6","7","8","9","C","0","⌫"].map(k=>React.createElement("div",{key:k,onClick:()=>tap(k),style:{...ks,fontSize:k==="C"||k==="⌫"?13:20,color:k==="C"?"rgba(238,240,246,0.4)":"#eef0f6"}},k))),
+    React.createElement("div",{style:{color:"#ff4757",fontSize:13,marginTop:14,minHeight:18}},err),
+    React.createElement("div",{style:{fontSize:11,color:"rgba(238,240,246,0.35)",marginTop:18}},hint)
+  );
+}
+
+function Dash({title,sub,tabs,activeTab,onTab,onExit,children}){
+  return React.createElement("div",{style:{display:"flex",flexDirection:"column",minHeight:"100vh",position:"relative",zIndex:1}},
+    React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 22px",borderBottom:"1px solid rgba(255,255,255,0.07)",flexShrink:0,gap:12}},
+      React.createElement("div",null,React.createElement("div",{style:{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:800}},title),React.createElement("div",{style:{fontSize:11,color:"rgba(238,240,246,0.4)",marginTop:2}},sub)),
+      React.createElement("button",{onClick:onExit,style:{background:S2,border:"none",borderRadius:10,color:"rgba(238,240,246,0.4)",fontSize:12,padding:"8px 14px",cursor:"pointer"}},"← Exit")
+    ),
+    React.createElement("div",{style:{display:"flex",gap:2,padding:"12px 22px 0",borderBottom:"1px solid rgba(255,255,255,0.07)",overflowX:"auto",flexShrink:0,scrollbarWidth:"none"}},
+      tabs.map(t=>React.createElement("button",{key:t.id,onClick:()=>onTab(t.id),style:{background:"none",border:"none",fontFamily:"'Syne',sans-serif",fontSize:11,fontWeight:600,color:activeTab===t.id?(t.ai?"#a78bfa":"#00e5a0"):"rgba(238,240,246,0.4)",cursor:"pointer",padding:"9px 12px",borderBottom:`2px solid ${activeTab===t.id?(t.ai?"#a78bfa":"#00e5a0"):"transparent"}`,letterSpacing:"0.06em",textTransform:"uppercase",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5}},t.ai&&React.createElement(Dot),t.label))
+    ),
+    React.createElement("div",{style:{padding:"20px 22px",overflowY:"auto",flex:1}},children)
+  );
+}
+
+function StaffDash({s,apiKey,onExit}){
+  const[tab,setTab]=useState("coaching");
+  const st=getStats(s);
+  const allCtx=STAFF.map(x=>{const xs=getStats(x);return`${x.name}: score ${xs.score}, CTR ${xs.ctr}%, avg ${xs.avgStr}★`;}).join(" | ");
+  const fb=st.negFb.map(t=>`"${t.feedback}"(${t.rating}★)`).join("; ")||"none";
+  const coachP=`Coach ${s.name.split(" ")[0]} directly (say "you"). Data: ${st.taps} taps, ${st.reviews} reviews, ${st.avgStr}★ avg, ${st.ctr}% CTR, score ${st.score}, ${st.streak} streak, ${st.weekTaps} this week. Team: ${allCtx}. Their feedback: ${fb}. Write 3-4 tips with genuine compliment, honest improvements, motivating close. Under 250 words.`;
+  const myFb=s.taps.filter(t=>t.feedback&&t.feedback.trim());
+  const sentP=myFb.length?`Analyze feedback for ${s.name.split(" ")[0]} (speak to them directly).\n${myFb.map(t=>`${t.rating}★: "${t.feedback}"`).join("\n")}\nGive: 1) Main theme 2) One specific change 3) Positive reframe. Kind, honest. Under 120 words.`:null;
+  const TABS=[{id:"coaching",label:"AI Coaching",ai:true},{id:"sentiment",label:"My Feedback",ai:true},{id:"stats",label:"My Stats"}];
+  return React.createElement(Dash,{title:`${s.name.split(" ")[0]}'s Dashboard`,sub:"Powered by TapTrack AI",tabs:TABS,activeTab:tab,onTab:setTab,onExit},
+    tab==="coaching"&&React.createElement(Card,{icon:"💬",title:"Your AI Coach",sub:`${st.taps} taps · ${st.avgStr}★ · ${st.ctr}% CTR · 🔥${st.streak}`},React.createElement(AI,{prompt:coachP,apiKey,ckey:`sc_${s.id}`,msg:"Writing your coaching tips…"})),
+    tab==="sentiment"&&React.createElement("div",null,
+      React.createElement(Card,{icon:"💭",title:"Your Customer Feedback",sub:`${myFb.length} feedback entries`},
+        !myFb.length?React.createElement("div",{style:{color:"#00e5a0",fontSize:13}},"🎉 No negative feedback — customers love you!"):React.createElement(AI,{prompt:sentP,apiKey,ckey:`ss_${s.id}`,msg:"Analyzing your feedback…"})
+      ),
+      myFb.length>0&&React.createElement("div",null,React.createElement(Lbl,null,"Feedback Log"),myFb.map((t,i)=>React.createElement("div",{key:i,style:{background:S1,border:"1px solid rgba(255,71,87,0.18)",borderRadius:14,padding:"14px 16px",marginBottom:10}},React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:6}},React.createElement("div",{style:{fontSize:13}},`${"⭐".repeat(t.rating)}${"☆".repeat(5-t.rating)}`),React.createElement("div",{style:{fontSize:11,color:"rgba(238,240,246,0.4)"}},fmt(t.ts))),React.createElement("div",{style:{fontSize:13,color:"rgba(238,240,246,0.7)",fontStyle:"italic"}},`"${t.feedback}"`))))
+    ),
+    tab==="stats"&&React.createElement("div",null,
+      React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:18}},[[st.taps,"Taps",s.color],[st.reviews,"Reviews","#ffd166"],[st.avgStr,"Avg Rating","#ff6b35"],[st.ctr+"%","CTR","#7c6aff"],[st.weekTaps,"This Week","#00e5a0"],[st.score,"Score","#ffd166"]].map(([v,l,c])=>React.createElement(SBox,{key:l,v,l,c}))),
+      React.createElement(Lbl,null,"Recent Taps"),
+      [...s.taps].sort((a,b)=>b.ts-a.ts).slice(0,8).map((t,i)=>React.createElement("div",{key:i,style:{display:"flex",alignItems:"flex-start",padding:"10px 0",borderBottom:"1px solid rgba(255,255,255,0.07)",gap:12}},
+        React.createElement("div",{style:{width:7,height:7,borderRadius:"50%",background:t.rating<=3?"#ff4757":"#00e5a0",flexShrink:0,marginTop:5}}),
+        React.createElement("div",{style:{flex:1}},React.createElement("div",{style:{fontSize:13,fontWeight:500}},`${"⭐".repeat(t.rating)}`,t.review&&React.createElement("span",{style:{fontSize:10,fontWeight:600,background:"rgba(0,229,160,0.1)",color:"#00e5a0",borderRadius:5,padding:"2px 7px",marginLeft:5}},"REVIEW ✓"),t.platform&&React.createElement("span",{style:{fontSize:10,fontWeight:600,background:"rgba(124,106,255,0.12)",color:"#7c6aff",borderRadius:5,padding:"2px 7px",marginLeft:5}},PLAT[t.platform])),React.createElement("div",{style:{fontSize:11,color:"rgba(238,240,246,0.4)",marginTop:2}},fmt(t.ts)))
+      ))
+    )
+  );
+}
+
+function MgrDash({apiKey,onExit}){
+  const[tab,setTab]=useState("summary");
+  const TABS=[{id:"summary",label:"Weekly Summary",ai:true},{id:"coaching",label:"Team Coaching",ai:true},{id:"feedback",label:"Feedback Analysis",ai:true},{id:"goals",label:"Smart Goals",ai:true},{id:"estimator",label:"Rating Estimator",ai:true},{id:"leaderboard",label:"Leaderboard"},{id:"analytics",label:"Analytics"},{id:"export",label:"Export Report",ai:true}];
+  const sd=STAFF.map(s=>{const st=getStats(s);return`${s.name}: ${st.taps} taps, ${st.reviews} reviews, ${st.avgStr}★, ${st.ctr}% CTR, score ${st.score}, streak ${st.streak}d`;}).join("\n");
+  const allFb=STAFF.flatMap(s=>s.taps.filter(t=>t.feedback).map(t=>`${s.name}(${t.rating}★):"${t.feedback}"`)).join("\n");
+  return React.createElement(Dash,{title:"Manager Dashboard",sub:"AI-powered · TapTrack",tabs:TABS,activeTab:tab,onTab:setTab,onExit},
+    tab==="summary"&&React.createElement(Card,{icon:"🧠",title:"Weekly Performance Summary",sub:`${STAFF.length} staff`},React.createElement(AI,{prompt:`Weekly summary for restaurant manager.\nTEAM:\n${sd}\nFEEDBACK:\n${allFb||"None"}\nCover: overall assessment, top performer with numbers, staff needing support + suggestion, feedback patterns, one priority action. Under 280 words.`,apiKey,ckey:"mgr_sum",msg:"Generating weekly summary…"})),
+    tab==="coaching"&&React.createElement(TeamCoach,{apiKey}),
+    tab==="feedback"&&React.createElement(FbTab,{apiKey}),
+    tab==="goals"&&React.createElement(Card,{icon:"🎯",title:"Smart Goal Suggestions",sub:"Based on actual performance gaps"},React.createElement(AI,{prompt:`Suggest 5 smart goals for this restaurant team:\n${sd}\nFor each: specific target from real numbers, who it's for, time period, one sentence on business impact.`,apiKey,ckey:"mgr_goals",msg:"Identifying performance gaps…"})),
+    tab==="estimator"&&React.createElement(Estimator,{apiKey}),
+    tab==="leaderboard"&&React.createElement(LB),
+    tab==="analytics"&&React.createElement(Analytics),
+    tab==="export"&&React.createElement(Card,{icon:"📄",title:"Full AI Performance Report",sub:"Copy or print"},React.createElement("button",{onClick:()=>window.print(),style:{background:S2,border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"9px 16px",color:"rgba(238,240,246,0.5)",fontFamily:"'Syne',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:8}},"🖨 Print / Save PDF"),React.createElement(AI,{prompt:`Professional weekly report.\nDATE:${new Date().toLocaleDateString([],{weekday:"long",year:"numeric",month:"long",day:"numeric"})}\nTEAM:\n${sd}\nFEEDBACK:\n${allFb||"None"}\nSections:## Executive Summary/## Individual Staff Performance/## Customer Sentiment/## Key Recommendations/## Goals for Next Week. Professional, specific.`,apiKey,ckey:"mgr_report",msg:"Writing full report…"}))
+  );
+}
+
+function TeamCoach({apiKey}){
+  const[sel,setSel]=useState(STAFF[0].id);
+  const s=STAFF.find(x=>x.id===sel);
+  const st=getStats(s);
+  const ctx=STAFF.map(x=>{const xs=getStats(x);return`${x.name}: score ${xs.score}, CTR ${xs.ctr}%, avg ${xs.avgStr}★`;}).join(" | ");
+  const fb=st.negFb.map(t=>`"${t.feedback}"(${t.rating}★)`).join("; ")||"none";
+  return React.createElement("div",null,
+    React.createElement("div",{style:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}},STAFF.map(x=>React.createElement("div",{key:x.id,onClick:()=>setSel(x.id),style:{background:sel===x.id?"rgba(167,139,250,0.12)":S2,border:`1px solid ${sel===x.id?"rgba(167,139,250,0.4)":"rgba(255,255,255,0.07)"}`,borderRadius:100,padding:"7px 14px",fontSize:12,cursor:"pointer",color:sel===x.id?"#a78bfa":"#eef0f6",display:"flex",alignItems:"center",gap:6}},React.createElement("div",{style:{width:20,height:20,borderRadius:"50%",background:x.color+"22",color:x.color,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Syne',sans-serif",fontSize:8,fontWeight:700}},ini(x.name)),x.name.split(" ")[0]))),
+    React.createElement(Card,{key:sel,icon:"👥",title:s.name,sub:`${st.taps} taps · ${st.avgStr}★ · ${st.ctr}% CTR · score ${st.score}`},React.createElement(AI,{key:sel,prompt:`Manager coaching notes for ${s.name}. Stats: ${st.taps} taps, ${st.reviews} reviews, ${st.avgStr}★, ${st.ctr}% CTR, score ${st.score}, ${st.streak}-day streak, ${st.weekTaps} this week. Team: ${ctx}. Feedback: ${fb}. Give: 1) What they do well 2) Biggest improvement 3) Coaching conversation starter 4) Suggested weekly goal with number. Direct, practical. Under 220 words.`,apiKey,ckey:`mgr_c_${sel}`,msg:`Notes for ${s.name.split(" ")[0]}…`}))
+  );
+}
+
+function FbTab({apiKey}){
+  const all=STAFF.flatMap(s=>s.taps.filter(t=>t.feedback&&t.feedback.trim()).map(t=>({...t,sName:s.name,sColor:s.color}))).sort((a,b)=>b.ts-a.ts);
+  const fbAI=all.map(f=>`${f.sName}(${f.rating}★):"${f.feedback}"`).join("\n");
+  const ss=r=>r>=4?{bg:"rgba(0,229,160,0.1)",c:"#00e5a0",l:"positive"}:r===3?{bg:"rgba(255,209,102,0.1)",c:"#ffd166",l:"neutral"}:{bg:"rgba(255,71,87,0.1)",c:"#ff4757",l:"negative"};
+  return React.createElement("div",null,
+    React.createElement(Card,{icon:"🔍",title:"Sentiment & Pattern Analysis",sub:"AI reading of all private feedback"},!all.length?React.createElement("div",{style:{color:"#00e5a0",fontSize:13}},"No feedback yet."):React.createElement(AI,{prompt:`Analyze private NFC feedback:\n${fbAI}\nGive: 1) Overall sentiment 2) 2-3 patterns 3) Operational issues 4) Urgent flags 5) Positive signals. Reference actual text. Under 240 words.`,apiKey,ckey:"mgr_fb",msg:"Analyzing feedback…"})),
+    all.length>0&&React.createElement("div",null,React.createElement(Lbl,null,`Raw Feedback (${all.length})`),all.map((f,i)=>{const s=ss(f.rating);return React.createElement("div",{key:i,style:{background:S1,border:"1px solid rgba(255,71,87,0.18)",borderRadius:14,padding:"14px 16px",marginBottom:10}},React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},React.createElement("div",{style:{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:700,color:f.sColor}},f.sName),React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8}},React.createElement("span",{style:{background:s.bg,color:s.c,borderRadius:5,padding:"2px 8px",fontSize:10,fontWeight:600}},s.l),React.createElement("span",{style:{fontSize:11,color:"rgba(238,240,246,0.4)"}},fmt(f.ts)))),React.createElement("div",{style:{fontSize:13,marginBottom:4}},`${"⭐".repeat(f.rating)}${"☆".repeat(5-f.rating)}`),React.createElement("div",{style:{fontSize:13,color:"rgba(238,240,246,0.7)",fontStyle:"italic"}},`"${f.feedback}"`));}))
+  );
+}
+
+function Estimator({apiKey}){
+  const defAvg=(STAFF.flatMap(s=>s.taps.map(t=>t.rating)).reduce((a,b)=>a+b,0)/Math.max(1,STAFF.flatMap(s=>s.taps).length)).toFixed(1);
+  const[f,setF]=useState({plat:"google",count:"71",cur:"4.2",tgt:"4.5",avg:defAvg});
+  const[res,setRes]=useState(null);
+  const iS={width:"100%",background:S2,border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"11px 14px",color:"#eef0f6",fontSize:14,outline:"none",marginBottom:12};
+  const calc=()=>{
+    const c=parseInt(f.count)||0,cur=parseFloat(f.cur)||0,tgt=parseFloat(f.tgt)||0,avg=parseFloat(f.avg)||0;
+    if(!c||!cur||!tgt||!avg)return;
+    if(tgt<=cur){setRes({type:"done"});return;}
+    if(avg<=tgt){setRes({type:"low"});return;}
+    const n=Math.max(0,Math.ceil((tgt*(c+1)-cur*c)/(avg-tgt)));
+    const taps=Math.ceil(n/0.65);
+    const pace=Math.max(1,STAFF.flatMap(s=>s.taps).filter(t=>t.ts>=ws()).length);
+    const wks=Math.ceil(taps/pace);
+    setRes({type:"calc",n,taps,wks,avg,prompt:`Restaurant wants ${f.plat} from ${cur}★ to ${tgt}★. Facts: ${c} reviews, team avg ${avg}★ from NFC taps, ~${n} more 5★ reviews needed, ~${taps} taps at 65% CTR, pace ${pace}/week → ~${wks} weeks. Give: 1) Realistic timeframe 2) Key strategy 3) 2 tactics 4) One risk. Under 180 words.`});
+  };
+  return React.createElement(Card,{icon:"📈",title:"Platform Rating Estimator",sub:"How many taps & reviews to hit your target"},
+    React.createElement("label",{style:{fontSize:11,fontWeight:500,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(238,240,246,0.4)",marginBottom:6,display:"block"}},"Platform"),
+    React.createElement("select",{value:f.plat,onChange:e=>setF(p=>({...p,plat:e.target.value})),style:{...iS,cursor:"pointer"}},React.createElement("option",{value:"google"},"Google Reviews"),React.createElement("option",{value:"yelp"},"Yelp"),React.createElement("option",{value:"tripadvisor"},"Tripadvisor")),
+    [["count","Current Review Count","71"],["cur","Current Rating","4.2"],["tgt","Target Rating","4.5"],["avg","Team Avg Rating",""]].map(([k,l,p])=>React.createElement("div",{key:k},React.createElement("label",{style:{fontSize:11,fontWeight:500,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(238,240,246,0.4)",marginBottom:6,display:"block"}},l),React.createElement("input",{type:"number",step:"0.1",placeholder:p,value:f[k],onChange:e=>setF(prev=>({...prev,[k]:e.target.value})),style:iS}))),
+    React.createElement("button",{onClick:calc,style:{width:"100%",padding:13,background:"linear-gradient(135deg,rgba(167,139,250,0.2),rgba(129,140,248,0.2))",border:"1px solid rgba(167,139,250,0.35)",borderRadius:12,color:"#a78bfa",fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:700,cursor:"pointer"}},"✦ Calculate & Predict"),
+    res&&React.createElement("div",{style:{marginTop:14}},
+      res.type==="done"&&React.createElement("div",{style:{color:"#ffd166",fontSize:13,textAlign:"center",padding:"10px 0"}},"✓ Already at or above target!"),
+      res.type==="low"&&React.createElement("div",{style:{color:"#ff6b35",fontSize:13,lineHeight:1.6}},"⚠️ Team avg at or below target — improve service quality first."),
+      res.type==="calc"&&React.createElement("div",null,
+        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10,marginBottom:14}},[[res.n,"5★ reviews needed","#00e5a0"],[res.taps,"Est. taps needed","#ffd166"],[res.wks+"w","At current pace","#7c6aff"],[res.avg+"★","Team avg","#ff6b35"]].map(([v,l,c])=>React.createElement("div",{key:l,style:{background:S1,border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:16,textAlign:"center"}},React.createElement("div",{style:{fontFamily:"'Syne',sans-serif",fontSize:26,fontWeight:800,lineHeight:1,marginBottom:4,color:c}},v),React.createElement("div",{style:{fontSize:10,color:"rgba(238,240,246,0.4)"}},l)))),
+        React.createElement(AI,{key:res.prompt.slice(0,40),prompt:res.prompt,apiKey,ckey:`est_${f.plat}_${f.cur}_${f.tgt}`,msg:"Running AI prediction…"})
+      )
+    )
+  );
+}
+
+function LB(){
+  const sorted=[...STAFF].map(s=>({s,st:getStats(s)})).sort((a,b)=>b.st.score-a.st.score);
+  const wk=[...STAFF].map(s=>({s,w:getStats(s).weekTaps})).sort((a,b)=>b.w-a.w)[0];
+  return React.createElement("div",null,
+    React.createElement("div",{style:{background:"linear-gradient(135deg,rgba(167,139,250,0.1),rgba(129,140,248,0.06))",border:"1px solid rgba(167,139,250,0.2)",borderRadius:14,padding:"14px 18px",marginBottom:18,display:"flex",alignItems:"center",gap:12}},React.createElement("span",{style:{fontSize:24}},"🏆"),React.createElement("div",null,React.createElement("div",{style:{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:700,marginBottom:2}},`This Week: ${wk.s.name}`),React.createElement("div",{style:{fontSize:11,color:"rgba(238,240,246,0.4)"}},`${wk.w} taps · Resets Monday`))),
+    sorted.map(({s,st},i)=>React.createElement("div",{key:s.id,style:{display:"flex",alignItems:"center",background:S1,border:`1px solid ${["rgba(255,209,102,0.35)","rgba(200,200,200,0.25)","rgba(205,127,50,0.25)"][i]||"rgba(255,255,255,0.07)"}`,borderRadius:16,padding:"14px 18px",gap:14,marginBottom:10}},
+      React.createElement("div",{style:{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:800,width:26,textAlign:"center",flexShrink:0}},["🥇","🥈","🥉"][i]||i+1),
+      React.createElement("div",{style:{width:42,height:42,borderRadius:"50%",background:s.color+"22",color:s.color,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:700,flexShrink:0}},ini(s.name)),
+      React.createElement("div",{style:{flex:1}},React.createElement("div",{style:{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:700,marginBottom:3}},s.name),React.createElement("div",{style:{fontSize:11,color:"rgba(238,240,246,0.4)"}},`${st.taps} taps · ${st.reviews} reviews · ${st.avgStr}⭐ · CTR ${st.ctr}% · 🔥${s.streak}`)),
+      React.createElement("div",{style:{textAlign:"right"}},React.createElement("div",{style:{fontFamily:"'Syne',sans-serif",fontSize:21,fontWeight:800,color:"#00e5a0",lineHeight:1}},st.score),React.createElement("div",{style:{fontSize:9,color:"rgba(238,240,246,0.4)",letterSpacing:"0.08em",textTransform:"uppercase"}},"pts"))
+    )),
+    React.createElement("div",{style:{marginTop:14,fontSize:11,color:"rgba(238,240,246,0.4)"}},"Score = Taps×10 + Reviews×15 + 5★×5")
+  );
+}
+
+function Analytics(){
+  const all=STAFF.flatMap(s=>s.taps);
+  const tot=all.length,revs=all.filter(t=>t.review).length;
+  const avg=all.length?(all.reduce((a,t)=>a+t.rating,0)/all.length).toFixed(1):"—";
+  const pos=all.filter(t=>t.rating>=4).length,neg=all.filter(t=>t.rating<=3).length;
+  const ctr=pos>0?Math.round((revs/pos)*100):0;
+  const gT=all.filter(t=>t.platform==="google").length,yT=all.filter(t=>t.platform==="yelp").length,tT=all.filter(t=>t.platform==="tripadvisor").length;
+  const mx=Math.max(...STAFF.map(s=>s.taps.length),1);
+  const cs={background:S1,border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:18,marginBottom:12};
+  return React.createElement("div",null,
+    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12,marginBottom:12}},[[tot,"Total Taps","#00e5a0"],[revs,"Reviews Driven","#ffd166"],[avg+"⭐","Avg Rating","#ff6b35"],[ctr+"%","Overall CTR","#7c6aff"],[pos,"Positive (4-5★)","#00e5a0"],[neg,"Negative (1-3★)","#ff4757"]].map(([v,l,c])=>React.createElement("div",{key:l,style:cs},React.createElement("div",{style:{fontFamily:"'Syne',sans-serif",fontSize:30,fontWeight:800,lineHeight:1,marginBottom:5,color:c}},v),React.createElement("div",{style:{fontSize:11,color:"rgba(238,240,246,0.4)"}},l)))),
+    React.createElement("div",{style:cs},React.createElement("div",{style:{fontSize:11,color:"rgba(238,240,246,0.4)",marginBottom:10}},"Platform Breakdown"),React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}},[["🔍",gT,"#00e5a0","Google"],["⭐",yT,"#ffd166","Yelp"],["✈️",tT,"#7c6aff","Tripadvisor"]].map(([icon,n,c,l])=>React.createElement("div",{key:l,style:{background:S2,borderRadius:10,padding:12,textAlign:"center"}},React.createElement("div",{style:{fontSize:18,marginBottom:3}},icon),React.createElement("div",{style:{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:800,color:c}},n),React.createElement("div",{style:{fontSize:10,color:"rgba(238,240,246,0.4)",textTransform:"uppercase",letterSpacing:"0.08em",marginTop:2}},l))))),
+    [["Taps Per Staff",STAFF.map(s=>[s.name,s.taps.length,s.color,mx,s.taps.length])],["Review CTR",STAFF.map(s=>{const st=getStats(s);return[s.name,st.ctr,null,100,st.ctr+"%"];})]].map(([ttl,rows])=>React.createElement("div",{key:ttl,style:cs},React.createElement("div",{style:{fontSize:11,color:"rgba(238,240,246,0.4)",marginBottom:8}},ttl),rows.map(([nm,v,c,mx2,lbl])=>React.createElement("div",{key:nm,style:{display:"flex",alignItems:"center",gap:10,marginBottom:9}},React.createElement("div",{style:{fontSize:11,width:60,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},nm.split(" ")[0]),React.createElement("div",{style:{flex:1,height:7,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}},React.createElement("div",{style:{height:"100%",borderRadius:4,width:Math.round(v/mx2*100)+"%",background:c||"linear-gradient(90deg,#00e5a0,#7c6aff)"}})),React.createElement("div",{style:{fontSize:11,fontWeight:600,width:32,textAlign:"right",flexShrink:0,color:c||"#00e5a0"}},lbl)))))
+  );
+}
+
+function App(){
+  const[screen,setScreen]=useState("hub");
+  const[apiKey,setApiKey]=useState("");
+  const[keyInput,setKeyInput]=useState("");
+  const[keyErr,setKeyErr]=useState("");
+  const[testing,setTesting]=useState(false);
+  const[currentStaff,setCurrentStaff]=useState(null);
+
+  const testKey=async()=>{
+    const k=keyInput.trim();
+    if(!k.startsWith("gsk_")){setKeyErr("Groq keys start with gsk_ — check your key");return;}
+    setTesting(true);setKeyErr("");
+    try{await callGroq("Reply with one word: ready",k);setApiKey(k);setScreen("hub");}
+    catch(e){setKeyErr(e.message==="INVALID_KEY"?"Invalid key — please double-check it":"Connection failed — check your internet");}
+    setTesting(false);
+  };
+
+  if(screen==="setup")return React.createElement("div",{style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"100vh",padding:"40px 20px",textAlign:"center",position:"relative",zIndex:1}},
+    React.createElement("div",{style:{fontFamily:"'Syne',sans-serif",fontSize:11,fontWeight:700,letterSpacing:"0.32em",textTransform:"uppercase",color:"#a78bfa",opacity:0.8,marginBottom:22}},"TapTrack AI"),
+    React.createElement("div",{style:{fontFamily:"'Syne',sans-serif",fontSize:"clamp(24px,5vw,36px)",fontWeight:800,lineHeight:1.1,marginBottom:10}},"Connect your ",React.createElement("span",{style:{background:"linear-gradient(135deg,#a78bfa,#00e5a0)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}},"free AI")),
+    React.createElement("div",{style:{color:"rgba(238,240,246,0.45)",fontSize:14,marginBottom:28,lineHeight:1.7,maxWidth:320}},"Free Groq key required. No credit card — 2 minutes to set up."),
+    React.createElement("div",{style:{background:S1,border:"1px solid rgba(167,139,250,0.2)",borderRadius:22,padding:"24px 22px",width:"100%",maxWidth:420,textAlign:"left"}},
+      React.createElement("div",{style:{background:S2,borderRadius:12,padding:16,marginBottom:18}},[
+        ["1",React.createElement("span",null,"Go to ",React.createElement("a",{href:"https://console.groq.com/keys",target:"_blank",rel:"noreferrer",style:{color:"#00e5a0",textDecoration:"none"}},"console.groq.com/keys"))],
+        ["2","Click Create API Key"],
+        ["3",React.createElement("span",null,React.createElement("strong",{style:{color:"#eef0f6"}},"Copy the key")," — starts with gsk_")]
+      ].map(([n,content])=>React.createElement("div",{key:n,style:{display:"flex",gap:10,marginBottom:n!=="3"?10:0,fontSize:13,color:"rgba(238,240,246,0.55)",alignItems:"flex-start"}},React.createElement("div",{style:{width:20,height:20,borderRadius:"50%",background:"rgba(167,139,250,0.2)",color:"#a78bfa",fontFamily:"'Syne',sans-serif",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1}},n),React.createElement("span",null,content)))),
+      React.createElement("input",{value:keyInput,onChange:e=>{setKeyInput(e.target.value);setKeyErr("");},onKeyDown:e=>e.key==="Enter"&&testKey(),placeholder:"Paste your key here (gsk_…)",style:{width:"100%",background:S2,border:`1px solid ${keyErr?"#ff4757":"rgba(255,255,255,0.07)"}`,borderRadius:10,padding:"13px 14px",color:"#eef0f6",fontSize:14,outline:"none",marginBottom:8}}),
+      keyErr&&React.createElement("div",{style:{color:"#ff4757",fontSize:12,marginBottom:8}},keyErr),
+      React.createElement("button",{onClick:testKey,disabled:testing||!keyInput.trim(),style:{width:"100%",padding:14,background:"linear-gradient(135deg,rgba(167,139,250,0.25),rgba(129,140,248,0.25))",border:"1px solid rgba(167,139,250,0.4)",borderRadius:12,color:testing?"rgba(167,139,250,0.5)":"#a78bfa",fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:700,cursor:testing?"not-allowed":"pointer"}},testing?"Testing connection…":"✦ Connect & Continue"),
+      React.createElement("div",{onClick:()=>setScreen("hub"),style:{fontSize:12,color:"rgba(238,240,246,0.3)",textAlign:"center",marginTop:14,cursor:"pointer",textDecoration:"underline"}},"Skip — use without AI")
+    )
+  );
+
+  if(screen==="staff-login")return React.createElement(Pin,{title:"Staff Login",sub:"Enter your 4-digit passcode",hint:"Your passcode is set by your manager",dotColor:"#7c6aff",onBack:()=>setScreen("hub"),onOk:v=>{const f=STAFF.find(s=>s.passcode===v);if(f){setCurrentStaff(f);setScreen("staff");return true;}return false;}});
+  if(screen==="mgr-pin")return React.createElement(Pin,{title:"Manager Login",sub:"Enter your 4-digit PIN",hint:"Default PIN: 1234",dotColor:"#00e5a0",onBack:()=>setScreen("hub"),onOk:v=>{if(v===MGR_PIN){setScreen("mgr");return true;}return false;}});
+  if(screen==="staff"&&currentStaff)return React.createElement(StaffDash,{s:currentStaff,apiKey,onExit:()=>{setScreen("hub");setCurrentStaff(null);}});
+  if(screen==="mgr")return React.createElement(MgrDash,{apiKey,onExit:()=>setScreen("hub")});
+
+  return React.createElement("div",{style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"100vh",padding:"40px 20px",textAlign:"center",position:"relative",zIndex:1}},
+    React.createElement("div",{style:{fontFamily:"'Syne',sans-serif",fontSize:11,fontWeight:700,letterSpacing:"0.32em",textTransform:"uppercase",color:"#a78bfa",opacity:0.8,marginBottom:28}},"TapTrack ✦ AI"),
+    React.createElement("div",{style:{fontFamily:"'Syne',sans-serif",fontSize:"clamp(36px,8vw,52px)",fontWeight:800,lineHeight:1.02,letterSpacing:"-0.03em",marginBottom:10}},"Your ",React.createElement("span",{style:{background:"linear-gradient(135deg,#a78bfa,#00e5a0)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}},"team"),React.createElement("br"),"at a glance"),
+    React.createElement("div",{style:{color:"rgba(238,240,246,0.4)",fontSize:14,marginBottom:40,lineHeight:1.7,maxWidth:290}},"NFC-powered reviews, real-time coaching, and AI insights for every shift."),
+    React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:14,width:"100%",maxWidth:380,marginBottom:20}},
+      [{label:"Staff Login",sub:"Your stats, AI coaching & personal feedback",icon:"👤",iBg:"rgba(0,229,160,0.1)",go:()=>setScreen("staff-login")},{label:"Manager Login",sub:"Analytics, AI tools, team coaching & settings",icon:"⚙️",iBg:"rgba(167,139,250,0.1)",go:()=>setScreen("mgr-pin")}].map(btn=>React.createElement("div",{key:btn.label,onClick:btn.go,style:{display:"flex",alignItems:"center",gap:16,background:S1,border:"1px solid rgba(255,255,255,0.07)",borderRadius:20,padding:"22px 24px",cursor:"pointer",textAlign:"left"}},React.createElement("div",{style:{width:48,height:48,borderRadius:14,background:btn.iBg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}},btn.icon),React.createElement("div",{style:{flex:1}},React.createElement("div",{style:{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:800,marginBottom:4}},btn.label),React.createElement("div",{style:{fontSize:12,color:"rgba(238,240,246,0.45)",lineHeight:1.5}},btn.sub)),React.createElement("div",{style:{fontSize:18,color:"rgba(238,240,246,0.3)"}},"→")))
+    ),
+    React.createElement("div",{onClick:()=>setScreen("setup"),style:{display:"flex",alignItems:"center",gap:6,fontSize:11,cursor:"pointer",color:apiKey?"#00e5a0":"rgba(238,240,246,0.3)"}},React.createElement("div",{style:{width:7,height:7,borderRadius:"50%",background:apiKey?"#00e5a0":"rgba(238,240,246,0.2)"}}),apiKey?"AI connected via Groq ✓":"AI not connected — tap to set up")
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+</script>
+</body>
+</html>
