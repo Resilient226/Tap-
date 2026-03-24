@@ -1,3 +1,4 @@
+document.getElementById("app").innerHTML = "<div style='padding:40px;color:white;font-size:24px'>app.js loaded</div>";
 // ═══════════════════════════════════════════
 // STORAGE
 // ═══════════════════════════════════════════
