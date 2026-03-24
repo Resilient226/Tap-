@@ -1,10 +1,14 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <title>Tap+</title>
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'"/>
+<noscript><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/></noscript>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -12,7 +16,7 @@
   --b:rgba(255,255,255,0.06);--b2:rgba(255,255,255,0.11);
   --g:#00e5a0;--o:#ff6b35;--p:#7c6aff;--y:#ffd166;
   --tx:#eef0f8;--mu:rgba(238,240,248,0.38);--rd:#ff4455;--ai:#a78bfa;
-  --f:'Nunito',system-ui,sans-serif;
+  --f:'Nunito',system-ui,-apple-system,sans-serif;
 }
 html,body{min-height:100%;background:var(--bg);color:var(--tx);font-family:var(--f);-webkit-font-smoothing:antialiased}
 body{overflow-x:hidden}
@@ -192,7 +196,7 @@ input::placeholder,textarea::placeholder{color:var(--mu)}
 
 </head>
 <body>
-<div id="app">
+<div id="app" style="min-height:100vh">
   <!-- views injected by JS -->
 </div>
 
@@ -1187,7 +1191,7 @@ _toastTimeout=setTimeout(()=>{t.style.transform=‘translateX(-50%) translateY(6
 // INIT
 // ═══════════════════════════════════════════
 window.addEventListener(‘popstate’,()=>render());
-render();
+if(document.readyState===‘loading’){document.addEventListener(‘DOMContentLoaded’,render);}else{render();}
 </script>
 
 </body>
