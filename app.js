@@ -784,19 +784,21 @@ window.calcEstimate = function() {
   const tgt = parseFloat(($("est-tgt")||{}).value) || 0;
   const el = $("est-result");
   if (!el) return;
-  // Auto-compute team avg from tap data
-  const active = STATE.staff.filter(s => s.active);
-  const allTaps = active.flatMap(s => mkTaps(s.id.charCodeAt(1)||1));
-  const avg = allTaps.length ? parseFloat((allTaps.reduce((a,t) => a+t.rating,0)/allTaps.length).toFixed(1)) : 4.2;
   if (!c || !cur || !tgt) { el.innerHTML = "<div style='color:#ff4455;font-size:13px;font-weight:500'>Fill in all fields first.</div>"; return; }
   if (tgt <= cur) { el.innerHTML = "<div style='color:#ffd166;font-size:13px;font-weight:600;text-align:center;padding:8px 0'>✓ Already at or above target!</div>"; return; }
-  if (avg <= tgt) { el.innerHTML = "<div style='color:#ff6b35;font-size:13px;line-height:1.6;font-weight:500'>⚠️ Your team\'s current average rating is at or below the target. Focus on improving service quality first.</div>"; return; }
-  const n = Math.max(0, Math.ceil((tgt*(c+1) - cur*c) / (avg-tgt)));
+  if (tgt > 5) { el.innerHTML = "<div style='color:#ff4455;font-size:13px;font-weight:500'>Target rating cannot exceed 5.0.</div>"; return; }
+  // Pure math: how many 5★ reviews needed to raise avg from cur to tgt
+  // n = c * (tgt - cur) / (5 - tgt)
+  const n = Math.max(1, Math.ceil((c * (tgt - cur)) / (5 - tgt)));
   const tps = Math.ceil(n / 0.65);
   const pace = Math.max(1, STATE.staff.filter(s => s.active).length * 3);
   const wks = Math.ceil(tps / pace);
-  const p = "Restaurant wants " + plat + " from " + cur + "★ to " + tgt + "★. Facts: " + c + " current reviews, team avg " + avg + "★, ~" + n + " more 5★ reviews needed, ~" + tps + " taps needed at 65% CTR, ~" + wks + " weeks at current pace. Give: 1) Realistic timeframe 2) Key strategy 3) 2 specific tactics 4) One risk to watch. Under 180 words.";
-  el.innerHTML = "<div class='est-grid'>" + [[n,"5★ reviews needed","#00e5a0"],[tps,"Est. taps needed","#ffd166"],[wks+"w","At current pace","#7c6aff"],[avg+"★","Your team avg","#ff6b35"]].map(([v,l,c]) => "<div class='est-card'><div class='est-val' style='color:" + c + "'>" + v + "</div><div class='est-lbl'>" + l + "</div></div>").join("") + "</div><div id='ai-est' data-aiblock='1' data-prompt='" + encodeURIComponent(p) + "' data-msg='Running AI prediction…'></div>";
+  const p = "Restaurant wants to raise their " + plat + " rating from " + cur + " to " + tgt + " stars. They currently have " + c + " reviews. They need approximately " + n + " new 5-star reviews (~" + tps + " taps at 65% conversion), which at current pace takes ~" + wks + " weeks. Give: 1) Realistic timeframe 2) Key strategy 3) 2 specific tactics 4) One risk to watch. Under 180 words.";
+  el.innerHTML = "<div class='est-grid'>" +
+    [[n,"5★ reviews needed","#00e5a0"],[tps,"Est. taps needed","#ffd166"],[wks+"w","Est. timeframe","#7c6aff"],[cur+"→"+tgt+"★","Rating jump","#ff6b35"]].map(function(item) {
+      return "<div class='est-card'><div class='est-val' style='color:" + item[2] + "'>" + item[0] + "</div><div class='est-lbl'>" + item[1] + "</div></div>";
+    }).join("") +
+  "</div><div id='ai-est'></div>";
   renderAIBlock("ai-est", p, "est_" + plat + "_" + cur + "_" + tgt, "Running AI prediction…");
 };
 
