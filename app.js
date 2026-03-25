@@ -175,6 +175,9 @@ async function getTaps(bizSlug, staffId) {
   if (result !== null) _tapCache[key] = result;
   return result || getDemoTaps(); // fallback to demo if Firebase not set up
 }
+function clearTapCache(bizSlug) {
+  Object.keys(_tapCache).forEach(k => { if (k.startsWith(bizSlug)) delete _tapCache[k]; });
+}
 
 // Invalidate cache when new tap saved
 const _origSaveTap = saveTap;
@@ -904,7 +907,10 @@ function renderStaffDash(el, biz, s) {
   el.innerHTML=`
     <div class='dash-header'>
       <div><div class='dash-name'>${esc(staffParts(s).firstName||s.name)}'s Dashboard</div><div class='dash-sub'>${esc(biz.name)}</div></div>
-      <button onclick='sessionStorage.removeItem("biz_auth_${biz.slug}");window.location.href="/${biz.slug}/dashboard"' class='dash-exit'>← Exit</button>
+      <div style='display:flex;gap:7px;align-items:center'>
+        <button id='staff-refresh-btn' onclick='_refreshStaffDash()' class='dash-exit' title='Refresh data' style='font-size:15px;padding:6px 10px'>↻</button>
+        <button onclick='sessionStorage.removeItem("biz_auth_${biz.slug}");window.location.href="/${biz.slug}/dashboard"' class='dash-exit'>← Exit</button>
+      </div>
     </div>
     <div class='dash-tabs' id='stabs'>
       <button class='dash-tab ai active' onclick='_sTab("coaching",this)'><span class='ai-mini-dot'></span> AI Coaching</button>
@@ -958,6 +964,17 @@ function renderStaffDash(el, biz, s) {
     }
   };
   _sTab("coaching", el.querySelector(".dash-tab"));
+
+  window._refreshStaffDash = function() {
+    const btn = $("staff-refresh-btn");
+    if (btn) { btn.style.opacity="0.4"; btn.style.pointerEvents="none"; }
+    clearTapCache(biz.slug);
+    _staffTaps = null; // clear local cache too
+    const activeTab = el.querySelector("#stabs .dash-tab.active");
+    const tabId = activeTab ? activeTab.getAttribute("onclick").match(/"([^"]+)"/)?.[1] : "coaching";
+    _sTab(tabId||"coaching", activeTab||el.querySelector(".dash-tab"));
+    setTimeout(()=>{ if(btn){btn.style.opacity="";btn.style.pointerEvents="";} }, 1500);
+  };
 }
 
 function goalRowRO(g, isTeam) {
@@ -998,7 +1015,10 @@ async function renderBizAdminDash(el, biz) {
         <div class='dash-name'>${esc(biz.name)}</div>
         <div class='dash-sub' style='color:#ff6b35'>Business Admin · Tap+</div>
       </div>
-      <button onclick='sessionStorage.removeItem("biz_auth_${biz.slug}");window.location.href="/${biz.slug}/dashboard"' class='dash-exit'>← Exit</button>
+      <div style='display:flex;gap:7px;align-items:center'>
+        <button onclick='_refreshBizAdmin()' class='dash-exit' title='Refresh data' style='font-size:15px;padding:6px 10px' id='ba-refresh-btn'>↻</button>
+        <button onclick='sessionStorage.removeItem("biz_auth_${biz.slug}");window.location.href="/${biz.slug}/dashboard"' class='dash-exit'>← Exit</button>
+      </div>
     </div>
     <div class='dash-tabs' id='batabs'>
       <button class='dash-tab ai active' onclick='_baTab("ai",this)'><span class='ai-mini-dot'></span> AI Insights</button>
@@ -1026,6 +1046,13 @@ async function renderBizAdminDash(el, biz) {
     else if (tab==="settings")  renderBizAdminSettings(body,biz,getStaffTaps);
   };
   _baTab("ai", el.querySelector(".dash-tab"));
+
+  window._refreshBizAdmin = function() {
+    const btn = $("ba-refresh-btn");
+    if (btn) { btn.style.opacity="0.4"; btn.style.pointerEvents="none"; }
+    clearTapCache(biz.slug);
+    const app = $("app"); if (app) renderBizAdminDash(app, getBiz(biz.slug)||biz);
+  };
 }
 
 function renderBizAdminSettings(body, biz, getStaffTaps) {
@@ -1129,7 +1156,10 @@ async function renderManagerDash(el, biz) {
   el.innerHTML=`
     <div class='dash-header'>
       <div><div class='dash-name'>${esc(biz.name)}</div><div class='dash-sub'>Manager Dashboard · Tap+</div></div>
-      <button onclick='sessionStorage.removeItem("biz_auth_${biz.slug}");window.location.href="/${biz.slug}/dashboard"' class='dash-exit'>← Exit</button>
+      <div style='display:flex;gap:7px;align-items:center'>
+        <button onclick='_refreshMgrDash()' class='dash-exit' title='Refresh data' style='font-size:15px;padding:6px 10px' id='mgr-refresh-btn'>↻</button>
+        <button onclick='sessionStorage.removeItem("biz_auth_${biz.slug}");window.location.href="/${biz.slug}/dashboard"' class='dash-exit'>← Exit</button>
+      </div>
     </div>
     <div class='dash-tabs' id='mtabs'>
       <button class='dash-tab ai active' onclick='_mTab("ai",this)'><span class='ai-mini-dot'></span> AI Insights</button>
@@ -1154,6 +1184,13 @@ async function renderManagerDash(el, biz) {
     else if (tab==="estimator") renderEstimatorTab(body,active);
   };
   _mTab("ai", el.querySelector(".dash-tab"));
+
+  window._refreshMgrDash = function() {
+    const btn = $("mgr-refresh-btn");
+    if (btn) { btn.style.opacity="0.4"; btn.style.pointerEvents="none"; }
+    clearTapCache(biz.slug);
+    const app = $("app"); if (app) renderManagerDash($("biz-dash")||app, getBiz(biz.slug)||biz);
+  };
 }
 
 // ─── AI INSIGHTS ───────────────────────────
@@ -1207,7 +1244,7 @@ let _teamSub="leaderboard", _chartMode="bar";
 
 function renderTeamTab(body, active, getStaffTaps) {
   if (!getStaffTaps) getStaffTaps = () => getDemoTaps();
-  body.innerHTML=`<div id='tsubs' style='display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap'>${["leaderboard","analytics"].map((s,i)=>`<button data-ts='${s}' onclick='_tSub(this.dataset.ts)' style='background:${i===0?"#00e5a0":"#15171f"};color:${i===0?"#07080c":"rgba(238,240,248,.5)"};border:1px solid ${i===0?"#00e5a0":"rgba(255,255,255,.08)"};border-radius:9px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit'>${i===0?"🏆 Leaderboard":"📊 Analytics"}</button>`).join("")}</div><div id='tsub-body'></div>`;
+  body.innerHTML=`<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:14px'><div id='tsubs' style='display:flex;gap:6px;flex-wrap:wrap'>${["leaderboard","analytics"].map((s,i)=>`<button data-ts='${s}' onclick='_tSub(this.dataset.ts)' style='background:${i===0?"#00e5a0":"#15171f"};color:${i===0?"#07080c":"rgba(238,240,248,.5)"};border:1px solid ${i===0?"#00e5a0":"rgba(255,255,255,.08)"};border-radius:9px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit'>${i===0?"🏆 Leaderboard":"📊 Analytics"}</button>`).join("")}</div><button id='team-refresh-btn' onclick='_refreshTeam()' style='background:#15171f;border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:6px 11px;font-size:14px;color:rgba(238,240,248,.5);cursor:pointer;font-family:inherit' title='Refresh'>↻</button></div><div id='tsub-body'></div>`;
   window._tSub=function(sub) {
     _teamSub=sub;
     document.querySelectorAll("#tsubs button").forEach(b=>{const a=b.dataset.ts===sub;b.style.background=a?"#00e5a0":"#15171f";b.style.color=a?"#07080c":"rgba(238,240,248,.5)";b.style.borderColor=a?"#00e5a0":"rgba(255,255,255,.08)";});
