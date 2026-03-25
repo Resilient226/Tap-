@@ -35,6 +35,8 @@ const STATE = {
   links: LS.get("tp_links", DEFAULT_LINKS),
   apiKey: LS.get("tp_key", ""),
   mgrPin: LS.get("tp_mpin", MGR_PIN_DEFAULT),
+  teamGoals: LS.get("tp_tgoals", []),
+  staffGoals: LS.get("tp_sgoals", {}),
   currentStaff: null,
   aiCache: {}
 };
@@ -44,6 +46,8 @@ function save() {
   LS.set("tp_links", STATE.links);
   if (STATE.apiKey) LS.set("tp_key", STATE.apiKey); else LS.del("tp_key");
   LS.set("tp_mpin", STATE.mgrPin);
+  LS.set("tp_tgoals", STATE.teamGoals);
+  LS.set("tp_sgoals", STATE.staffGoals);
 }
 
 // ═══════════════════════════════════════════
@@ -169,7 +173,7 @@ function render() {
 // ═══════════════════════════════════════════
 function renderHub() {
   const connected = !!STATE.apiKey;
-  return "<div id='v-hub' class='view hub on'><div style='position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;width:100%'><div class='hub-logo'>Tap<span>+</span></div><div class='hub-tag'>Smart Review & Perfomance Insights for Businesses</div><div class='hub-cards'><div class='hub-card' id='btn-staff-login'><div class='hub-card-ico' style='background:rgba(0,229,160,.08)'>👤</div><div style='flex:1'><div class='hub-card-title'>Staff Login</div><div class='hub-card-sub'>Your stats, AI coaching &amp; feedback</div></div><div class='hub-card-arrow'>›</div></div><div class='hub-card' id='btn-mgr-login'><div class='hub-card-ico' style='background:rgba(167,139,250,.08)'>⚙️</div><div style='flex:1'><div class='hub-card-title'>Manager Login</div><div class='hub-card-sub'>Analytics, AI tools &amp; team management</div></div><div class='hub-card-arrow'>›</div></div></div><div class='ai-status' id='ai-status-btn' style='color:" + (connected ? "#00e5a0" : "rgba(238,240,248,.25)") + "'><div class='ai-dot' style='background:" + (connected ? "#00e5a0" : "rgba(238,240,248,.15)") + "'></div>" + (connected ? "AI connected via Groq ✓" : "AI not connected — tap to set up") + "</div></div></div>";
+  return "<div id='v-hub' class='view hub on'><div style='position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;width:100%'><div class='hub-logo'>Tap<span>+</span></div><div class='hub-tag'>Smart review management for restaurants</div><div class='hub-cards'><div class='hub-card' id='btn-staff-login'><div class='hub-card-ico' style='background:rgba(0,229,160,.08)'>👤</div><div style='flex:1'><div class='hub-card-title'>Staff Login</div><div class='hub-card-sub'>Your stats, AI coaching &amp; feedback</div></div><div class='hub-card-arrow'>›</div></div><div class='hub-card' id='btn-mgr-login'><div class='hub-card-ico' style='background:rgba(167,139,250,.08)'>⚙️</div><div style='flex:1'><div class='hub-card-title'>Manager Login</div><div class='hub-card-sub'>Analytics, AI tools &amp; team management</div></div><div class='hub-card-arrow'>›</div></div></div><div class='ai-status' id='ai-status-btn' style='color:" + (connected ? "#00e5a0" : "rgba(238,240,248,.25)") + "'><div class='ai-dot' style='background:" + (connected ? "#00e5a0" : "rgba(238,240,248,.15)") + "'></div>" + (connected ? "AI connected via Groq ✓" : "AI not connected — tap to set up") + "</div></div></div>";
 }
 
 function initHub() {
@@ -262,7 +266,7 @@ function openStaffDash() {
 
   const el = $("v-staff");
   if (!el) return;
-  el.innerHTML = "<div class='dash-header'><div><div class='dash-name'>" + esc(s.name.split(" ")[0]) + "'s Dashboard</div><div class='dash-sub'>Powered by Tap+ AI</div></div><button class='dash-exit' onclick='showHub()'>← Exit</button></div><div class='dash-tabs' id='staff-tabs'><button class='dash-tab ai active' onclick='staffTab(\"coaching\",this)'><span class='ai-mini-dot'></span> AI Coaching</button><button class='dash-tab ai' onclick='staffTab(\"sentiment\",this)'><span class='ai-mini-dot'></span> My Feedback</button><button class='dash-tab' onclick='staffTab(\"stats\",this)'>My Stats</button></div><div class='dash-body' id='staff-body'></div>";
+  el.innerHTML = "<div class='dash-header'><div><div class='dash-name'>" + esc(s.name.split(" ")[0]) + "'s Dashboard</div><div class='dash-sub'>Powered by Tap+ AI</div></div><button class='dash-exit' onclick='showHub()'>← Exit</button></div><div class='dash-tabs' id='staff-tabs'><button class='dash-tab ai active' onclick='staffTab(\"coaching\",this)'><span class='ai-mini-dot'></span> AI Coaching</button><button class='dash-tab ai' onclick='staffTab(\"sentiment\",this)'><span class='ai-mini-dot'></span> My Feedback</button><button class='dash-tab' onclick='staffTab(\"goals\",this)'>My Goals</button><button class='dash-tab' onclick='staffTab(\"stats\",this)'>My Stats</button></div><div class='dash-body' id='staff-body'></div>";
 
   window._sData = { s, st, taps, coachP, sentP };
 
@@ -290,6 +294,18 @@ function renderStaffTab(tab) {
     if (st.negFb.length) renderAIBlock("ai-sentiment", sentP, "ss_" + s.id, "Analyzing feedback…");
     else { const el = $("ai-sentiment"); if(el) el.innerHTML = "<div style='color:#00e5a0;font-size:13px;font-weight:600'>🎉 No negative feedback yet — keep it up!</div>"; }
 
+  } else if (tab === "goals") {
+    const sid = window._sData.s.id;
+    const tGoals = STATE.teamGoals || [];
+    const sGoals = (STATE.staffGoals[sid] || []);
+    const allGoals = tGoals.map(g => Object.assign({}, g, {_isTeam:true})).concat(sGoals);
+    if (allGoals.length === 0) {
+      body.innerHTML = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center'><div style='font-size:36px;margin-bottom:12px'>🎯</div><div style='font-weight:700;font-size:15px;margin-bottom:6px'>No goals yet</div><div style='color:rgba(238,240,248,.38);font-size:13px;font-weight:500'>Your manager will set goals here for you to track.</div></div>";
+    } else {
+      body.innerHTML =
+        (tGoals.length>0 ? "<div class='sec-lbl'>Team Goals</div>" + tGoals.map(g => staffGoalRowHTML(g)).join("") : "") +
+        (sGoals.length>0 ? "<div class='sec-lbl' style='margin-top:14px'>Your Personal Goals</div>" + sGoals.map(g => staffGoalRowHTML(g)).join("") : "");
+    }
   } else {
     body.innerHTML = "<div class='stat-grid'>" + [[st.count,"Taps",s.color],[st.reviews,"Reviews","#ffd166"],[st.avgStr,"Avg ★","#ff6b35"],[st.ctr+"%","CTR","#7c6aff"],[st.weekTaps,"This Week","#00e5a0"],[st.score,"Score","#ffd166"]].map(([v,l,c]) => "<div class='stat-box'><div class='stat-val' style='color:" + c + "'>" + v + "</div><div class='stat-lbl'>" + l + "</div></div>").join("") + "</div><div class='sec-lbl'>Recent Taps</div>" + [...taps].sort((a,b) => b.ts-a.ts).slice(0,6).map(t => "<div style='display:flex;align-items:flex-start;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06);gap:9px'><div style='width:6px;height:6px;border-radius:50%;background:" + (t.rating<=3?"#ff4455":"#00e5a0") + ";flex-shrink:0;margin-top:4px'></div><div style='flex:1'><div style='font-size:12px;font-weight:600'>" + "⭐".repeat(t.rating) + (t.review ? "<span style='font-size:10px;font-weight:700;background:rgba(0,229,160,.1);color:#00e5a0;border-radius:5px;padding:1px 6px;margin-left:5px'>REVIEW</span>" : "") + (t.platform ? "<span style='font-size:10px;font-weight:700;background:rgba(124,106,255,.1);color:#7c6aff;border-radius:5px;padding:1px 6px;margin-left:4px'>" + t.platform + "</span>" : "") + "</div><div style='font-size:11px;color:rgba(238,240,248,.38);margin-top:2px;font-weight:500'>" + fmt(t.ts) + "</div></div></div>").join("");
   }
@@ -305,7 +321,7 @@ function openMgrDash() {
 
   const el = $("v-mgr");
   if (!el) return;
-  el.innerHTML = "<div class='dash-header'><div><div class='dash-name'>Manager Dashboard</div><div class='dash-sub'>Tap+ AI</div></div><button class='dash-exit' onclick='showHub()'>← Exit</button></div><div class='dash-tabs' id='mgr-tabs'><button class='dash-tab ai active' onclick='mgrTab(\"summary\",this)'><span class='ai-mini-dot'></span> Summary</button><button class='dash-tab ai' onclick='mgrTab(\"coaching\",this)'><span class='ai-mini-dot'></span> Team Coaching</button><button class='dash-tab ai' onclick='mgrTab(\"feedback\",this)'><span class='ai-mini-dot'></span> Feedback</button><button class='dash-tab ai' onclick='mgrTab(\"goals\",this)'><span class='ai-mini-dot'></span> Smart Goals</button><button class='dash-tab ai' onclick='mgrTab(\"estimator\",this)'><span class='ai-mini-dot'></span> Estimator</button><button class='dash-tab' onclick='mgrTab(\"staff\",this)'>Staff</button><button class='dash-tab' onclick='mgrTab(\"leaderboard\",this)'>Leaderboard</button><button class='dash-tab' onclick='mgrTab(\"analytics\",this)'>Analytics</button><button class='dash-tab ai' onclick='mgrTab(\"export\",this)'><span class='ai-mini-dot'></span> Export</button></div><div class='dash-body' id='mgr-body'></div>";
+  el.innerHTML = "<div class='dash-header'><div><div class='dash-name'>Manager Dashboard</div><div class='dash-sub'>Tap+ AI</div></div><button class='dash-exit' onclick='showHub()'>← Exit</button></div><div class='dash-tabs' id='mgr-tabs'><button class='dash-tab ai active' onclick='mgrTab(\"summary\",this)'><span class='ai-mini-dot'></span> Summary</button><button class='dash-tab ai' onclick='mgrTab(\"coaching\",this)'><span class='ai-mini-dot'></span> Coaching</button><button class='dash-tab' onclick='mgrTab(\"goals\",this)'>Goals</button><button class='dash-tab ai' onclick='mgrTab(\"feedback\",this)'><span class='ai-mini-dot'></span> Feedback</button><button class='dash-tab ai' onclick='mgrTab(\"estimator\",this)'><span class='ai-mini-dot'></span> Estimator</button><button class='dash-tab' onclick='mgrTab(\"staff\",this)'>Staff</button><button class='dash-tab' onclick='mgrTab(\"leaderboard\",this)'>Leaderboard</button><button class='dash-tab' onclick='mgrTab(\"analytics\",this)'>Analytics</button><button class='dash-tab ai' onclick='mgrTab(\"export\",this)'><span class='ai-mini-dot'></span> Export</button></div><div class='dash-body' id='mgr-body'></div>";
 
   window._mgrData = { activeStaff, sd, allFb };
 
@@ -330,20 +346,16 @@ function renderMgrTab(tab) {
     renderAIBlock("ai-summary", p, "mgr_sum", "Generating summary…");
 
   } else if (tab === "coaching") {
-    const first = activeStaff[0];
-    body.innerHTML = "<div class='pills' id='coach-pills'>" + activeStaff.map(s => "<div class='pill" + (s.id===(first&&first.id)?" active":"") + "' onclick='selectCoachStaff(\"" + s.id + "\",this)'><div class='pill-av' style='background:" + s.color + "22;color:" + s.color + "'>" + ini(s.name) + "</div>" + s.name.split(" ")[0] + "</div>").join("") + "</div><div id='coach-card'></div>";
-    if (first) selectCoachStaff(first.id, document.querySelector(".pill"));
+    renderCoachingAndGoalsTab(body, activeStaff, sd);
+
+  } else if (tab === "goals") {
+    renderGoalsTab(body);
 
   } else if (tab === "feedback") {
     const allFbItems = activeStaff.flatMap(s => { const st = getStats(mkTaps(s.id.charCodeAt(1)||1)); return st.negFb.map(t => Object.assign({}, t, {sName:s.name, sColor:s.color})); }).sort((a,b) => b.ts-a.ts);
     const p = "Analyze private customer feedback:\n" + (allFb || "No feedback yet.") + "\nGive: 1) Overall sentiment 2) 2-3 recurring patterns 3) Operational issues 4) Urgent flags 5) Positive signals. Reference actual text. Under 240 words.";
     body.innerHTML = "<div class='ai-card'><div class='ai-card-head'><div class='ai-card-ico'>🔍</div><div><div class='ai-card-title'>Sentiment &amp; Pattern Analysis</div><div class='ai-card-sub'>All private customer feedback</div></div></div><div id='ai-fb' data-aiblock='1' data-prompt='" + encodeURIComponent(p) + "' data-msg='Analyzing feedback…'></div></div>" + (allFbItems.length ? "<div class='sec-lbl'>Raw Feedback (" + allFbItems.length + ")</div>" + allFbItems.map(f => { const s = f.rating>=4?{bg:"rgba(0,229,160,.08)",c:"#00e5a0",l:"positive"}:f.rating===3?{bg:"rgba(255,209,102,.08)",c:"#ffd166",l:"neutral"}:{bg:"rgba(255,68,85,.08)",c:"#ff4455",l:"negative"}; return "<div class='plain-card'><div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px'><div style='font-weight:700;font-size:13px;color:" + f.sColor + "'>" + esc(f.sName) + "</div><div style='display:flex;align-items:center;gap:7px'><span style='background:" + s.bg + ";color:" + s.c + ";border-radius:5px;padding:2px 8px;font-size:10px;font-weight:700'>" + s.l + "</span><span style='font-size:11px;color:rgba(238,240,248,.38);font-weight:500'>" + fmt(f.ts) + "</span></div></div><div style='font-size:13px;margin-bottom:4px'>" + "⭐".repeat(f.rating) + "☆".repeat(5-f.rating) + "</div><div style='font-size:13px;color:rgba(238,240,248,.65);font-style:italic'>\"" + esc(f.feedback) + "\"</div></div>"; }).join("") : "<div style='color:#00e5a0;font-size:13px;font-weight:500'>No feedback collected yet.</div>");
     renderAIBlock("ai-fb", p, "mgr_fb", "Analyzing feedback…");
-
-  } else if (tab === "goals") {
-    const p = "Suggest 5 smart goals for this restaurant team:\n" + sd + "\nFor each: specific target from real numbers, who it's for, time period (this week/month), one sentence on business impact.";
-    body.innerHTML = "<div class='ai-card'><div class='ai-card-head'><div class='ai-card-ico'>🎯</div><div><div class='ai-card-title'>Smart Goal Suggestions</div><div class='ai-card-sub'>Based on actual performance gaps</div></div></div><div id='ai-goals' data-aiblock='1' data-prompt='" + encodeURIComponent(p) + "' data-msg='Identifying gaps…'></div></div>";
-    renderAIBlock("ai-goals", p, "mgr_goals", "Identifying gaps…");
 
   } else if (tab === "estimator") {
     renderEstimatorTab(body);
@@ -380,124 +392,259 @@ window.selectCoachStaff = function(sid, el) {
   renderAIBlock("ai-coach-" + sid, p, "mgr_c_" + sid, "Writing coaching notes…");
 };
 
+
+// ═══════════════════════════════════════════
+// COACHING + SMART GOALS (combined tab)
+// ═══════════════════════════════════════════
+function renderCoachingAndGoalsTab(body, activeStaff, sd) {
+  const first = activeStaff[0];
+  body.innerHTML =
+    "<div style='display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:14px'>" +
+      "<button class='btn btn-primary btn-sm' id='cg-coaching-btn' onclick='cgSubTab(\"coaching\")' style='background:#00e5a0;color:#07080c'>Coaching</button>" +
+      "<button class='btn btn-ghost btn-sm' id='cg-ai-goals-btn' onclick='cgSubTab(\"ai-goals\")'>AI Smart Goals</button>" +
+    "</div>" +
+    "<div id='cg-sub'></div>";
+
+  window._cgData = { activeStaff, sd, first };
+
+  window.cgSubTab = function(sub) {
+    ["coaching","ai-goals"].forEach(s => {
+      const b = $("cg-" + s + "-btn");
+      if (b) { b.style.background = sub===s?"#00e5a0":"#15171f"; b.style.color = sub===s?"#07080c":"rgba(238,240,248,.38)"; b.className = "btn btn-sm " + (sub===s?"btn-primary":"btn-ghost"); }
+    });
+    const el = $("cg-sub"); if (!el) return;
+    if (sub === "coaching") {
+      const { activeStaff, first } = window._cgData || {};
+      el.innerHTML =
+        "<div class='pills' id='coach-pills'>" +
+        (activeStaff||[]).map(s =>
+          "<div class='pill" + (s.id===(first&&first.id)?" active":"") + "' onclick='selectCoachStaff(\"" + s.id + "\",this)'>" +
+          "<div class='pill-av' style='background:" + s.color + "22;color:" + s.color + "'>" + ini(s.name) + "</div>" +
+          s.name.split(" ")[0] + "</div>"
+        ).join("") +
+        "</div><div id='coach-card'></div>";
+      if (first) selectCoachStaff(first.id, document.querySelector("#coach-pills .pill"));
+    } else {
+      const { sd } = window._cgData || {};
+      const p = "Suggest 5 smart, specific goals for this restaurant team:\n" + (sd||"") + "\nFor each: a specific measurable target based on real numbers, who it is for (individual or whole team), a clear time period (this week or this month), and one sentence on why it matters for the business. Format each as a numbered list item.";
+      el.innerHTML =
+        "<div class='ai-card'>" +
+          "<div class='ai-card-head'><div class='ai-card-ico'>🎯</div><div><div class='ai-card-title'>AI Smart Goals</div><div class='ai-card-sub'>Generated from actual performance gaps</div></div></div>" +
+          "<div id='ai-goals' data-aiblock='1' data-prompt='" + encodeURIComponent(p) + "' data-msg='Identifying gaps…'></div>" +
+        "</div>";
+      renderAIBlock("ai-goals", p, "mgr_goals", "Identifying gaps…");
+    }
+  };
+
+  cgSubTab("coaching");
+}
+
+// ═══════════════════════════════════════════
+// GOALS TAB (team + individual, manager sets)
+// ═══════════════════════════════════════════
+function renderGoalsTab(body) {
+  body.innerHTML =
+    "<div style='display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:14px'>" +
+      "<button class='btn btn-primary btn-sm' id='g-team-btn' onclick='goalsSubTab(\"team\")' style='background:#00e5a0;color:#07080c'>Team Goals</button>" +
+      "<button class='btn btn-ghost btn-sm' id='g-staff-btn' onclick='goalsSubTab(\"staff\")'>Individual Goals</button>" +
+    "</div>" +
+    "<div id='goals-sub'></div>";
+  window.goalsSubTab = function(sub) {
+    ["team","staff"].forEach(s => {
+      const b = $("g-" + s + "-btn");
+      if (b) { b.className = "btn btn-sm " + (sub===s?"btn-primary":"btn-ghost"); b.style.background = sub===s?"#00e5a0":"#15171f"; b.style.color = sub===s?"#07080c":"rgba(238,240,248,.38)"; }
+    });
+    const el = $("goals-sub"); if (!el) return;
+    if (sub === "team") renderTeamGoals(el);
+    else renderIndividualGoals(el);
+  };
+  goalsSubTab("team");
+}
+
+function renderTeamGoals(el) {
+  const goals = STATE.teamGoals || [];
+  el.innerHTML =
+    "<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:12px'>" +
+      "<div class='sec-lbl' style='margin-bottom:0'>Team Goals (" + goals.length + ")</div>" +
+      "<button class='btn btn-primary btn-sm' onclick='openAddGoalModal(\"team\",null)'>+ Add Goal</button>" +
+    "</div>" +
+    (goals.length === 0
+      ? "<div style='color:rgba(238,240,248,.38);font-size:13px;font-weight:500;text-align:center;padding:24px 0'>No team goals yet. Add one to get started.</div>"
+      : goals.map(g => goalRowHTML(g, "team", null)).join("")
+    );
+}
+
+function renderIndividualGoals(el) {
+  const activeStaff = STATE.staff.filter(s => s.active);
+  const first = activeStaff[0];
+  el.innerHTML =
+    "<div class='pills' id='igoal-pills'>" +
+    activeStaff.map(s =>
+      "<div class='pill" + (s.id===(first&&first.id)?" active":"") + "' onclick='selectGoalStaff(\"" + s.id + "\",this)'>" +
+      "<div class='pill-av' style='background:" + s.color + "22;color:" + s.color + "'>" + ini(s.name) + "</div>" +
+      s.name.split(" ")[0] + "</div>"
+    ).join("") +
+    "</div>" +
+    "<div id='igoal-body'></div>";
+  if (first) selectGoalStaff(first.id, document.querySelector("#igoal-pills .pill"));
+}
+
+window.selectGoalStaff = function(sid, el) {
+  document.querySelectorAll("#igoal-pills .pill").forEach(p => p.classList.remove("active"));
+  if (el) el.classList.add("active");
+  const s = STATE.staff.find(x => x.id === sid);
+  const body = $("igoal-body"); if (!body || !s) return;
+  const goals = (STATE.staffGoals[sid] || []);
+  body.innerHTML =
+    "<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:12px'>" +
+      "<div class='sec-lbl' style='margin-bottom:0'>Goals for " + esc(s.name) + " (" + goals.length + ")</div>" +
+      "<button class='btn btn-primary btn-sm' onclick='openAddGoalModal(\"staff\",\"" + sid + "\")'>+ Add Goal</button>" +
+    "</div>" +
+    (goals.length === 0
+      ? "<div style='color:rgba(238,240,248,.38);font-size:13px;font-weight:500;text-align:center;padding:24px 0'>No goals set for " + esc(s.name.split(" ")[0]) + " yet.</div>"
+      : goals.map(g => goalRowHTML(g, "staff", sid)).join("")
+    );
+};
+
+function goalRowHTML(g, type, sid) {
+  const pct = Math.min(100, g.target > 0 ? Math.round((g.current / g.target) * 100) : 0);
+  const done = pct >= 100;
+  const sidParam = sid ? "\\\"" + sid + "\\\"" : "null";
+  return "<div class='plain-card' style='margin-bottom:9px'>" +
+    "<div style='display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px'>" +
+      "<div style='flex:1'>" +
+        "<div style='font-weight:700;font-size:13px;margin-bottom:3px'>" + esc(g.title) + (done ? " <span style='font-size:10px;background:rgba(0,229,160,.12);color:#00e5a0;border-radius:5px;padding:1px 6px;font-weight:700'>Done ✓</span>" : "") + "</div>" +
+        (g.note ? "<div style='font-size:11px;color:rgba(238,240,248,.38);font-weight:500;margin-bottom:6px'>" + esc(g.note) + "</div>" : "") +
+        "<div style='display:flex;align-items:center;gap:8px'>" +
+          "<div style='flex:1;height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden'>" +
+            "<div style='height:100%;width:" + pct + "%;background:" + (done?"#00e5a0":"#7c6aff") + ";border-radius:3px;transition:width .4s'></div>" +
+          "</div>" +
+          "<div style='font-size:11px;font-weight:700;color:" + (done?"#00e5a0":"rgba(238,240,248,.6)") + ";flex-shrink:0'>" + g.current + "/" + g.target + " " + esc(g.unit||"") + "</div>" +
+        "</div>" +
+      "</div>" +
+      "<div style='display:flex;gap:5px;flex-shrink:0'>" +
+        "<button class='btn btn-ghost btn-sm' onclick='openUpdateGoalModal(\"" + g.id + "\",\"" + type + "\"," + sidParam + ")'>Update</button>" +
+        "<button class='btn btn-danger btn-sm' onclick='deleteGoal(\"" + g.id + "\",\"" + type + "\"," + sidParam + ")'>✕</button>" +
+      "</div>" +
+    "</div>" +
+    "<div style='font-size:10px;color:rgba(238,240,248,.25);font-weight:500'>" + esc(g.period||"") + (g.deadline ? " · Due: " + esc(g.deadline) : "") + "</div>" +
+  "</div>";
+}
+
+window.openAddGoalModal = function(type, sid) {
+  const title = type === "team" ? "Add Team Goal" : "Add Goal for " + esc((STATE.staff.find(s=>s.id===sid)||{}).name||"Staff");
+  showModal(
+    "<div class='modal-head'><div class='modal-title'>" + title + "</div><button class='modal-close' onclick='closeModal()'>×</button></div>" +
+    "<div style='display:flex;flex-direction:column;gap:11px'>" +
+      "<div><div class='field-lbl'>Goal Title</div><input class='inp' id='g-title' placeholder='e.g. Hit 20 reviews this week'/></div>" +
+      "<div><div class='field-lbl'>Note (optional)</div><input class='inp' id='g-note' placeholder='e.g. Focus on Google reviews'/></div>" +
+      "<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px'>" +
+        "<div><div class='field-lbl'>Target</div><input class='inp' id='g-target' type='number' placeholder='20' min='1'/></div>" +
+        "<div><div class='field-lbl'>Current</div><input class='inp' id='g-current' type='number' placeholder='0' value='0' min='0'/></div>" +
+        "<div><div class='field-lbl'>Unit</div><input class='inp' id='g-unit' placeholder='reviews'/></div>" +
+      "</div>" +
+      "<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px'>" +
+        "<div><div class='field-lbl'>Period</div>" +
+          "<select class='sel' id='g-period'>" +
+            "<option value='This week'>This week</option>" +
+            "<option value='This month'>This month</option>" +
+            "<option value='Ongoing'>Ongoing</option>" +
+          "</select>" +
+        "</div>" +
+        "<div><div class='field-lbl'>Deadline (optional)</div><input class='inp' id='g-deadline' type='date'/></div>" +
+      "</div>" +
+      "<button class='btn btn-primary btn-full' onclick='saveNewGoal(\"" + type + "\",\"" + (sid||"") + "\")'>Add Goal</button>" +
+    "</div>"
+  );
+};
+
+window.saveNewGoal = function(type, sid) {
+  const title = (($("g-title")||{}).value||"").trim();
+  const note = (($("g-note")||{}).value||"").trim();
+  const target = parseInt(($("g-target")||{}).value) || 0;
+  const current = parseInt(($("g-current")||{}).value) || 0;
+  const unit = (($("g-unit")||{}).value||"").trim();
+  const period = (($("g-period")||{}).value||"This week");
+  const deadline = (($("g-deadline")||{}).value||"").trim();
+  if (!title) { showToast("Goal title required"); return; }
+  if (!target) { showToast("Target number required"); return; }
+  const goal = { id: uid(), title, note, target, current, unit, period, deadline, createdAt: Date.now() };
+  if (type === "team") {
+    STATE.teamGoals.push(goal);
+  } else {
+    if (!STATE.staffGoals[sid]) STATE.staffGoals[sid] = [];
+    STATE.staffGoals[sid].push(goal);
+  }
+  save(); closeModal();
+  if (type === "team") { const el = $("goals-sub"); if(el) renderTeamGoals(el); }
+  else { const el = $("igoal-body"); if(el) { const s=STATE.staff.find(x=>x.id===sid); if(s) { const goals=(STATE.staffGoals[sid]||[]); el.innerHTML="<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:12px'><div class='sec-lbl' style='margin-bottom:0'>Goals for "+esc(s.name)+" ("+goals.length+")</div><button class='btn btn-primary btn-sm' onclick='openAddGoalModal(\"staff\",\""+sid+"\")'>+ Add Goal</button></div>"+(goals.length===0?"<div style='color:rgba(238,240,248,.38);font-size:13px;font-weight:500;text-align:center;padding:24px 0'>No goals yet.</div>":goals.map(g=>goalRowHTML(g,"staff",sid)).join("")); } } }
+  showToast("Goal added!");
+};
+
+window.openUpdateGoalModal = function(gid, type, sid) {
+  const goals = type==="team" ? STATE.teamGoals : (STATE.staffGoals[sid]||[]);
+  const g = goals.find(x=>x.id===gid);
+  if (!g) return;
+  showModal(
+    "<div class='modal-head'><div class='modal-title'>Update Progress</div><button class='modal-close' onclick='closeModal()'>×</button></div>" +
+    "<div style='display:flex;flex-direction:column;gap:11px'>" +
+      "<div style='background:#15171f;border-radius:10px;padding:12px 13px'><div style='font-weight:700;font-size:14px;margin-bottom:3px'>" + esc(g.title) + "</div><div style='font-size:12px;color:rgba(238,240,248,.38);font-weight:500'>Target: " + g.target + " " + esc(g.unit||"") + "</div></div>" +
+      "<div><div class='field-lbl'>Current Progress</div><input class='inp' id='upd-current' type='number' value='" + g.current + "' min='0'/></div>" +
+      "<button class='btn btn-primary btn-full' onclick='saveGoalUpdate(\"" + gid + "\",\"" + type + "\",\"" + (sid||"") + "\")'>Save Progress</button>" +
+    "</div>"
+  );
+};
+
+window.saveGoalUpdate = function(gid, type, sid) {
+  const current = parseInt(($("upd-current")||{}).value) || 0;
+  if (type === "team") {
+    STATE.teamGoals = STATE.teamGoals.map(g => g.id===gid ? Object.assign({},g,{current}) : g);
+  } else {
+    STATE.staffGoals[sid] = (STATE.staffGoals[sid]||[]).map(g => g.id===gid ? Object.assign({},g,{current}) : g);
+  }
+  save(); closeModal();
+  if (type === "team") { const el=$("goals-sub"); if(el) renderTeamGoals(el); }
+  else { window.selectGoalStaff && selectGoalStaff(sid, document.querySelector("#igoal-pills .pill.active")); }
+  showToast("Progress updated!");
+};
+
+window.deleteGoal = function(gid, type, sid) {
+  if (!confirm("Delete this goal?")) return;
+  if (type === "team") { STATE.teamGoals = STATE.teamGoals.filter(g => g.id!==gid); }
+  else { STATE.staffGoals[sid] = (STATE.staffGoals[sid]||[]).filter(g => g.id!==gid); }
+  save();
+  if (type === "team") { const el=$("goals-sub"); if(el) renderTeamGoals(el); }
+  else { window.selectGoalStaff && selectGoalStaff(sid, document.querySelector("#igoal-pills .pill.active")); }
+  showToast("Goal removed");
+};
+
 // ═══════════════════════════════════════════
 // ESTIMATOR TAB
 // ═══════════════════════════════════════════
 function renderEstimatorTab(body) {
-  body.innerHTML =
-    "<div class='ai-card'>" +
-      "<div class='ai-card-head'>" +
-        "<div class='ai-card-ico'>📈</div>" +
-        "<div>" +
-          "<div class='ai-card-title'>Platform Rating Estimator</div>" +
-          "<div class='ai-card-sub'>Estimate how many new 5★ reviews you need</div>" +
-        "</div>" +
-      "</div>" +
-
-      "<div class='field-lbl' style='margin-top:4px'>Platform</div>" +
-      "<select class='sel' id='est-plat' style='margin-bottom:10px'>" +
-        "<option value='google'>Google Reviews</option>" +
-        "<option value='yelp'>Yelp</option>" +
-        "<option value='tripadvisor'>Tripadvisor</option>" +
-      "</select>" +
-
-      "<div class='field-lbl'>Current Review Count</div>" +
-      "<input class='inp' id='est-count' type='number' step='1' placeholder='71' value='71' style='margin-bottom:10px'/>" +
-
-      "<div class='field-lbl'>Current Rating</div>" +
-      "<input class='inp' id='est-cur' type='number' step='0.1' placeholder='4.2' value='4.2' style='margin-bottom:10px'/>" +
-
-      "<div class='field-lbl'>Target Rating</div>" +
-      "<input class='inp' id='est-tgt' type='number' step='0.1' placeholder='4.5' value='4.5' style='margin-bottom:12px'/>" +
-
-      "<button class='btn btn-ai btn-full' style='font-size:14px;padding:12px' onclick='calcEstimate()'>✦ Calculate &amp; Predict</button>" +
-      "<div id='est-result' style='margin-top:14px'></div>" +
-    "</div>";
+  body.innerHTML = "<div class='ai-card'><div class='ai-card-head'><div class='ai-card-ico'>📈</div><div><div class='ai-card-title'>Platform Rating Estimator</div><div class='ai-card-sub'>AI predicts your path to your target</div></div></div><div class='field-lbl' style='margin-top:4px'>Platform</div><select class='sel' id='est-plat' style='margin-bottom:10px'><option value='google'>Google Reviews</option><option value='yelp'>Yelp</option><option value='tripadvisor'>Tripadvisor</option></select><div class='field-lbl'>Current Review Count</div><input class='inp' id='est-count' type='number' step='1' placeholder='71' value='71' style='margin-bottom:10px'/><div class='field-lbl'>Current Rating</div><input class='inp' id='est-cur' type='number' step='0.1' placeholder='4.2' value='4.2' style='margin-bottom:10px'/><div class='field-lbl'>Target Rating</div><input class='inp' id='est-tgt' type='number' step='0.1' placeholder='4.5' value='4.5' style='margin-bottom:10px'/><div class='field-lbl'>Team Avg Rating</div><input class='inp' id='est-avg' type='number' step='0.1' placeholder='4.2' value='4.2' style='margin-bottom:12px'/><button class='btn btn-ai btn-full' style='font-size:14px;padding:12px' onclick='calcEstimate()'>✦ Calculate &amp; Predict</button><div id='est-result' style='margin-top:14px'></div></div>";
 }
 
-window.calcEstimate = function () {
-  const plat = ($("est-plat") || {}).value || "google";
-  const c = parseInt(($("est-count") || {}).value, 10) || 0;
-  const cur = parseFloat(($("est-cur") || {}).value) || 0;
-  const tgt = parseFloat(($("est-tgt") || {}).value) || 0;
+window.calcEstimate = function() {
+  const plat = ($("est-plat")||{}).value || "google";
+  const c = parseInt(($("est-count")||{}).value) || 0;
+  const cur = parseFloat(($("est-cur")||{}).value) || 0;
+  const tgt = parseFloat(($("est-tgt")||{}).value) || 0;
+  const avg = parseFloat(($("est-avg")||{}).value) || 0;
   const el = $("est-result");
-
   if (!el) return;
-
-  if (!c || !cur || !tgt) {
-    el.innerHTML =
-      "<div style='color:#ff4455;font-size:13px;font-weight:500'>Fill in all fields first.</div>";
-    return;
-  }
-
-  if (cur < 0 || cur > 5 || tgt < 0 || tgt > 5) {
-    el.innerHTML =
-      "<div style='color:#ff4455;font-size:13px;font-weight:500'>Ratings must be between 0 and 5.</div>";
-    return;
-  }
-
-  if (tgt <= cur) {
-    el.innerHTML =
-      "<div style='color:#ffd166;font-size:13px;font-weight:600;text-align:center;padding:8px 0'>✓ Already at or above target!</div>";
-    return;
-  }
-
-  if (tgt >= 5) {
-    el.innerHTML =
-      "<div style='color:#ff6b35;font-size:13px;line-height:1.6;font-weight:500'>A perfect 5.0 is technically possible but usually takes a very large number of new 5★ reviews.</div>";
-  }
-
-  // Assume future incoming reviews are 5-star reviews
-  const futureAvg = 5.0;
-
-  // Solve:
-  // (cur*c + 5*n) / (c+n) >= tgt
-  const numerator = tgt * c - cur * c;
-  const denominator = futureAvg - tgt;
-
-  if (denominator <= 0) {
-    el.innerHTML =
-      "<div style='color:#ff4455;font-size:13px;font-weight:500'>Target must be below 5.0 for this estimator.</div>";
-    return;
-  }
-
-  const n = Math.max(0, Math.ceil(numerator / denominator));
-  const tps = Math.ceil(n / 0.65); // assume 65% conversion from happy taps to reviews
-  const pace = Math.max(1, STATE.staff.filter((s) => s.active).length * 3);
+  if (!c || !cur || !tgt || !avg) { el.innerHTML = "<div style='color:#ff4455;font-size:13px;font-weight:500'>Fill in all fields first.</div>"; return; }
+  if (tgt <= cur) { el.innerHTML = "<div style='color:#ffd166;font-size:13px;font-weight:600;text-align:center;padding:8px 0'>✓ Already at or above target!</div>"; return; }
+  if (avg <= tgt) { el.innerHTML = "<div style='color:#ff6b35;font-size:13px;line-height:1.6;font-weight:500'>⚠️ Team avg is at or below the target. Improve service quality first.</div>"; return; }
+  const n = Math.max(0, Math.ceil((tgt*(c+1) - cur*c) / (avg-tgt)));
+  const tps = Math.ceil(n / 0.65);
+  const pace = Math.max(1, STATE.staff.filter(s => s.active).length * 3);
   const wks = Math.ceil(tps / pace);
-
-  const p =
-    "A restaurant wants to raise its " + plat +
-    " rating from " + cur + "★ to " + tgt + "★. " +
-    "It currently has " + c + " reviews. " +
-    "Assume new incoming reviews are 5★. " +
-    "Estimated additional 5★ reviews needed: " + n + ". " +
-    "Estimated taps needed at 65% conversion: " + tps + ". " +
-    "Estimated time at current pace: " + wks + " weeks. " +
-    "Give: 1) realistic interpretation 2) one key strategy 3) 2 tactical recommendations 4) one caution. Under 180 words.";
-
-  el.innerHTML =
-    "<div class='est-grid'>" +
-      [
-        [n, "5★ reviews needed", "#00e5a0"],
-        [tps, "Est. taps needed", "#ffd166"],
-        [wks + "w", "At current pace", "#7c6aff"],
-        ["5.0★", "Assumed new reviews", "#ff6b35"]
-      ]
-        .map(function (item) {
-          return (
-            "<div class='est-card'>" +
-              "<div class='est-val' style='color:" + item[2] + "'>" + item[0] + "</div>" +
-              "<div class='est-lbl'>" + item[1] + "</div>" +
-            "</div>"
-          );
-        })
-        .join("") +
-    "</div>" +
-    "<div id='ai-est' data-aiblock='1' data-prompt='" + encodeURIComponent(p) + "' data-msg='Running AI prediction…'></div>";
-
+  const p = "Restaurant wants " + plat + " from " + cur + "★ to " + tgt + "★. Facts: " + c + " current reviews, team avg " + avg + "★, ~" + n + " more 5★ reviews needed, ~" + tps + " taps needed at 65% CTR, ~" + wks + " weeks at current pace. Give: 1) Realistic timeframe 2) Key strategy 3) 2 specific tactics 4) One risk to watch. Under 180 words.";
+  el.innerHTML = "<div class='est-grid'>" + [[n,"5★ reviews needed","#00e5a0"],[tps,"Est. taps needed","#ffd166"],[wks+"w","At current pace","#7c6aff"],[avg+"★","Team avg","#ff6b35"]].map(([v,l,c]) => "<div class='est-card'><div class='est-val' style='color:" + c + "'>" + v + "</div><div class='est-lbl'>" + l + "</div></div>").join("") + "</div><div id='ai-est' data-aiblock='1' data-prompt='" + encodeURIComponent(p) + "' data-msg='Running AI prediction…'></div>";
   renderAIBlock("ai-est", p, "est_" + plat + "_" + cur + "_" + tgt, "Running AI prediction…");
 };
+
 // ═══════════════════════════════════════════
 // STAFF MANAGEMENT TAB
 // ═══════════════════════════════════════════
@@ -695,6 +842,28 @@ window.saveEditLink = function(id) {
   STATE.links = STATE.links.map(l => l.id===id ? Object.assign({},l,{icon,label,url}) : l);
   save(); closeModal(); renderLinkList();
 };
+
+// Staff view of a goal (read-only progress)
+function staffGoalRowHTML(g) {
+  const pct = Math.min(100, g.target > 0 ? Math.round((g.current / g.target) * 100) : 0);
+  const done = pct >= 100;
+  return "<div class='plain-card' style='margin-bottom:9px'>" +
+    "<div style='margin-bottom:8px'>" +
+      "<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:3px'>" +
+        "<div style='font-weight:700;font-size:13px'>" + esc(g.title) + (done?" <span style='font-size:10px;background:rgba(0,229,160,.12);color:#00e5a0;border-radius:5px;padding:1px 6px;font-weight:700'>Done ✓</span>":"") + (g._isTeam?" <span style='font-size:10px;background:rgba(124,106,255,.1);color:#7c6aff;border-radius:5px;padding:1px 6px;font-weight:700'>Team</span>":"") + "</div>" +
+        "<div style='font-size:12px;font-weight:700;color:" + (done?"#00e5a0":"rgba(238,240,248,.6)") + "'>" + pct + "%</div>" +
+      "</div>" +
+      (g.note ? "<div style='font-size:11px;color:rgba(238,240,248,.38);font-weight:500;margin-bottom:6px'>" + esc(g.note) + "</div>" : "") +
+      "<div style='height:7px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden'>" +
+        "<div style='height:100%;width:" + pct + "%;background:" + (done?"#00e5a0":"linear-gradient(90deg,#7c6aff,#a78bfa)") + ";border-radius:4px;transition:width .4s'></div>" +
+      "</div>" +
+    "</div>" +
+    "<div style='display:flex;align-items:center;justify-content:space-between'>" +
+      "<div style='font-size:10px;color:rgba(238,240,248,.25);font-weight:500'>" + esc(g.period||"") + (g.deadline?" · Due: "+esc(g.deadline):"") + "</div>" +
+      "<div style='font-size:11px;font-weight:600;color:rgba(238,240,248,.5)'>" + g.current + " / " + g.target + " " + esc(g.unit||"") + "</div>" +
+    "</div>" +
+  "</div>";
+}
 
 // ═══════════════════════════════════════════
 // MODAL + TOAST
