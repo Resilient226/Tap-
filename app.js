@@ -29,7 +29,7 @@ const DEFAULT_LINKS = [
   {id:"gl",label:"Google",icon:"🔍",url:"https://search.google.com/local/writereview?placeid=YOUR_ID",active:true},
   {id:"yl",label:"Yelp",icon:"⭐",url:"https://www.yelp.com/writeareview/biz/YOUR_ID",active:false}
 ];
-const DEFAULT_STAFF = [{id:"s1",name:"Staff Member",color:"#00e5a0",passcode:"1234",active:true}];
+const DEFAULT_STAFF = [{id:"s1",firstName:"Staff",lastInitial:"M",color:"#00e5a0",passcode:"1234",active:true}];
 
 // ─── HELPERS ───────────────────────────────
 const $      = id => document.getElementById(id);
@@ -40,6 +40,20 @@ const slugify= (s="") => s.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|
 const fmt    = ts => { const d=new Date(ts); return d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})+", "+d.toLocaleDateString([],{month:"short",day:"numeric"}); };
 const wsStart= () => { const d=new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-d.getDay()); return d.getTime(); };
 const clone  = o => JSON.parse(JSON.stringify(o));
+
+// Staff name helpers
+// Stores: { firstName, lastInitial } → display as "Alisha S."
+// URL slug: "alisha-s"
+const staffDisplayName = s => s.firstName + (s.lastInitial ? " " + s.lastInitial.toUpperCase() + "." : "");
+const staffUrlSlug     = s => (s.firstName + (s.lastInitial ? "-" + s.lastInitial : "")).toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+// ini for avatar: first letter of first + last initial
+const staffIni         = s => ((s.firstName||"")[0]||(s.name||"")[0]||"").toUpperCase() + ((s.lastInitial||"")[0]||(s.name||" ")[1]||"").toUpperCase();
+// Backwards compat: parse old single-name into parts
+function staffParts(s) {
+  if (s.firstName) return s;
+  const parts = (s.name||"").trim().split(/\s+/);
+  return { ...s, firstName: parts[0]||"", lastInitial: parts[1] ? parts[1][0] : "" };
+}
 
 // ─── BUSINESS STORAGE ──────────────────────
 function getBizList() { return LS.get("tp_businesses",[]); }
@@ -272,7 +286,7 @@ function renderPlatformHome(app) {
 
       <div style="width:100%;max-width:320px">
         <div style="font-size:13px;font-weight:600;color:rgba(238,240,248,.4);margin-bottom:16px;letter-spacing:.04em;text-transform:uppercase">Enter Store Code</div>
-        <input id="store-code-inp" class="inp" placeholder="e.g. STORE CODE" maxlength="20"
+        <input id="store-code-inp" class="inp" placeholder="e.g. JAMES or 4821" maxlength="20"
           style="text-align:center;font-size:18px;font-weight:700;letter-spacing:.08em;margin-bottom:8px;text-transform:uppercase"
           oninput="this.value=this.value.toUpperCase()"
           onkeydown="if(event.key==='Enter')_submitStoreCode()"/>
@@ -689,8 +703,32 @@ function renderCustomerPage(app, biz, staffId) {
   const b          = {...DEFAULT_BRAND,...(biz.brand||{})};
   const activeLinks= biz.links.filter(l=>l.active);
   const firstLink  = activeLinks[0]||null;
-  const staffRec   = staffId ? biz.staff.find(s=>s.id===staffId) : null;
-  const staffName  = staffRec ? staffRec.name : "General";
+  // Support both old ID-based and new slug-based lookup
+  const staffRec = staffId ? (
+    biz.staff.find(s => staffUrlSlug(staffParts(s)) === staffId) ||
+    biz.staff.find(s => s.id === staffId)
+  ) : null;
+  const staffName = staffRec ? staffDisplayName(staffParts(staffRec)) : "General";
+
+  // ── LOG TAP IMMEDIATELY on page load ─────────────────────────────────────
+  // This is the true "card tap" moment — the instant the customer's phone loads.
+  // We write a pending record now, then update it with rating/feedback when they submit.
+  const tapId = uid();
+  const tapTs = Date.now();
+  saveTap({
+    id:        tapId,
+    ts:        tapTs,
+    bizSlug:   biz.slug,
+    staffId:   staffId || "general",
+    staffName: staffName,
+    rating:    null,
+    platform:  null,
+    review:    false,
+    feedback:  "",
+    redirected:false,
+    status:    "tapped"   // pending — no rating yet
+  });
+
   let rating = 0;
 
   document.body.style.background = b.bgColor;
@@ -720,14 +758,15 @@ function renderCustomerPage(app, biz, staffId) {
     const after=$("cust-after"); if(!after) return;
 
     if (r===5 && firstLink) {
-      saveTap({id:uid(),ts:Date.now(),bizSlug:biz.slug,staffId:staffId||"general",staffName,rating:r,platform:firstLink.label,review:true,feedback:"",redirected:true});
+      // Update the existing tap record with rating + redirect info
+      saveTap({id:tapId,ts:tapTs,bizSlug:biz.slug,staffId:staffId||"general",staffName,rating:r,platform:firstLink.label,review:true,feedback:"",redirected:true,status:"rated"});
       after.innerHTML=`<div style='animation:up .25s ease;text-align:center;padding:8px 0'><div style='font-size:38px;margin-bottom:10px'>🙏</div><div style='font-weight:800;font-size:18px;color:${b.textColor};margin-bottom:6px'>Thank you!</div><div style='font-size:13px;color:${b.textColor};opacity:.45;font-weight:500'>Taking you to leave a review…</div></div>`;
       setTimeout(()=>window.location.href=firstLink.url, 1100);
       return;
     }
 
     if (r>=4 && activeLinks.length>0) {
-      saveTap({id:uid(),ts:Date.now(),bizSlug:biz.slug,staffId:staffId||"general",staffName,rating:r,platform:null,review:false,feedback:"",redirected:false});
+      saveTap({id:tapId,ts:tapTs,bizSlug:biz.slug,staffId:staffId||"general",staffName,rating:r,platform:null,review:false,feedback:"",redirected:false,status:"rated"});
       after.innerHTML=`<div style='font-size:13px;font-weight:600;color:${b.textColor};opacity:.55;margin-bottom:12px'>${esc(b.reviewPrompt)}</div>`+
         activeLinks.map(l=>`<a href='${esc(l.url)}' target='_blank' rel='noreferrer' style='display:flex;align-items:center;gap:13px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.11);border-radius:14px;padding:15px 17px;text-decoration:none;margin-bottom:9px;text-align:left'><span style='font-size:24px'>${l.icon}</span><div style='flex:1'><div style='font-weight:700;font-size:14px;color:${b.textColor}'>Review on ${esc(l.label)}</div><div style='font-size:11px;color:${b.textColor};opacity:.38;margin-top:2px'>Tap to open</div></div><span style='color:${b.textColor};opacity:.3;font-size:16px'>→</span></a>`).join("")+
         `<button onclick='_cDone()' style='width:100%;margin-top:4px;padding:14px;background:${b.brandColor};color:#07080c;border:none;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit'>Done ✓</button>`;
@@ -742,7 +781,7 @@ function renderCustomerPage(app, biz, staffId) {
   window._cDone   = () => app.innerHTML=tyScreen(b);
   window._cSubmit = () => {
     const fb=($("cust-fb")||{}).value||"";
-    saveTap({id:uid(),ts:Date.now(),bizSlug:biz.slug,staffId:staffId||"general",staffName,rating,platform:null,review:false,feedback:fb,redirected:false});
+    saveTap({id:tapId,ts:tapTs,bizSlug:biz.slug,staffId:staffId||"general",staffName,rating,platform:null,review:false,feedback:fb,redirected:false,status:"rated"});
     app.innerHTML=tyScreen(b);
   };
 }
@@ -811,7 +850,7 @@ function calcStats(taps) {
 function renderStaffDash(el, biz, s) {
   el.innerHTML=`
     <div class='dash-header'>
-      <div><div class='dash-name'>${esc(s.name.split(" ")[0])}'s Dashboard</div><div class='dash-sub'>${esc(biz.name)}</div></div>
+      <div><div class='dash-name'>${esc(staffParts(s).firstName||s.name)}'s Dashboard</div><div class='dash-sub'>${esc(biz.name)}</div></div>
       <button onclick='sessionStorage.removeItem("biz_auth_${biz.slug}");window.location.href="/${biz.slug}/dashboard"' class='dash-exit'>← Exit</button>
     </div>
     <div class='dash-tabs' id='stabs'>
@@ -830,7 +869,7 @@ function renderStaffDash(el, biz, s) {
     const body=$("sbody"); if(!body) return;
 
     if (tab==="coaching") {
-      const p=`Coach ${s.name.split(" ")[0]} directly. Stats: ${st.count} taps, ${st.reviews} reviews, ${st.avgStr}★, ${st.ctr}% CTR, score ${st.score}. 3 coaching tips: genuine compliment, one improvement, motivating close. Under 200 words.`;
+      const p=`Coach ${staffParts(s).firstName||s.name} directly. Stats: ${st.count} taps, ${st.reviews} reviews, ${st.avgStr}★, ${st.ctr}% CTR, score ${st.score}. 3 coaching tips: genuine compliment, one improvement, motivating close. Under 200 words.`;
       body.innerHTML=`<div class='ai-card'><div class='ai-card-head'><div class='ai-card-ico'>💬</div><div><div class='ai-card-title'>Your AI Coach</div><div class='ai-card-sub'>${st.count} taps · ${st.avgStr}★</div></div></div><div id='ai-coaching'></div></div>`;
       renderAIBlock("ai-coaching",p,"sc_"+s.id,"Writing tips…");
     }
@@ -949,7 +988,7 @@ function renderBizAdminSettings(body, biz) {
         const st=calcStats(getDemoTaps());
         const pct=st.count>0?Math.round((st.reviews/st.count)*100):0;
         return `<div style='display:flex;align-items:center;gap:10px;margin-bottom:8px'>
-          <div style='width:32px;height:32px;border-radius:50%;background:${s.color}22;color:${s.color};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;flex-shrink:0'>${ini(s.name)}</div>
+          <div style='width:32px;height:32px;border-radius:50%;background:${s.color}22;color:${s.color};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;flex-shrink:0'>${staffIni(staffParts(s))}</div>
           <div style='flex:1;min-width:0'>
             <div style='display:flex;justify-content:space-between;margin-bottom:4px'>
               <span style='font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>${esc(s.name)}</span>
@@ -1027,7 +1066,7 @@ function renderAITab(body, active, sd, allFb) {
       el.innerHTML=`<div class='ai-card'><div class='ai-card-head'><div class='ai-card-ico'>🧠</div><div><div class='ai-card-title'>Weekly Summary</div></div></div><div id='ai-sum'></div></div>`;
       renderAIBlock("ai-sum",p,"mgr_sum","Generating…");
     } else if (sub==="coaching") {
-      el.innerHTML=`<div class='pills' id='cpills'>${active.map((s,i)=>`<div class='pill${i===0?" active":""}' onclick='_cStaff("${s.id}",this)'><div class='pill-av' style='background:${s.color}22;color:${s.color}'>${ini(s.name)}</div>${s.name.split(" ")[0]}</div>`).join("")}</div><div id='ccard'></div>`;
+      el.innerHTML=`<div class='pills' id='cpills'>${active.map((s,i)=>`<div class='pill${i===0?" active":""}' onclick='_cStaff("${s.id}",this)'><div class='pill-av' style='background:${s.color}22;color:${s.color}'>${staffIni(staffParts(s))}</div>${staffParts(s).firstName||s.name}</div>`).join("")}</div><div id='ccard'></div>`;
       if (active[0]) _cStaff(active[0].id, el.querySelector(".pill"));
     } else if (sub==="feedback") {
       const items=active.flatMap(s=>calcStats(getDemoTaps()).negFb.map(t=>({...t,sName:s.name,sColor:s.color}))).sort((a,b)=>b.ts-a.ts);
@@ -1054,7 +1093,7 @@ window._cStaff=function(sid,pill) {
   const fb=st.negFb.map(t=>`"${t.feedback}"(${t.rating}★)`).join("; ")||"none";
   const p=`Manager coaching for ${s.name}. Stats: ${st.count} taps, ${st.reviews} reviews, ${st.avgStr}★, ${st.ctr}% CTR, score ${st.score}. Team: ${ctx}. Feedback: ${fb}. What they do well, biggest improvement, coaching starter, suggested goal. Under 200 words.`;
   const cc=$("ccard"); if(!cc) return;
-  cc.innerHTML=`<div class='ai-card'><div class='ai-card-head'><div style='width:36px;height:36px;border-radius:50%;background:${s.color}22;color:${s.color};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px'>${ini(s.name)}</div><div><div class='ai-card-title'>${esc(s.name)}</div><div class='ai-card-sub'>${st.count} taps · ${st.avgStr}★ · score ${st.score}</div></div></div><div id='aic-${sid}'></div></div>`;
+  cc.innerHTML=`<div class='ai-card'><div class='ai-card-head'><div style='width:36px;height:36px;border-radius:50%;background:${s.color}22;color:${s.color};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px'>${staffIni(staffParts(s))}</div><div><div class='ai-card-title'>${esc(s.name)}</div><div class='ai-card-sub'>${st.count} taps · ${st.avgStr}★ · score ${st.score}</div></div></div><div id='aic-${sid}'></div></div>`;
   renderAIBlock("aic-"+sid,p,"mgr_c_"+sid,"Writing…");
 };
 
@@ -1079,7 +1118,7 @@ function renderLeaderboard(el, active) {
   const wkTop=[...rows].sort((a,b)=>b.st.weekTaps-a.st.weekTaps)[0];
   const pl=pct=>{if(pct>=.9)return{e:"🔥",l:"On Fire",c:"#ff6b35"};if(pct>=.75)return{e:"💪",l:"Strong",c:"#00e5a0"};if(pct>=.55)return{e:"✅",l:"Good",c:"#7c6aff"};if(pct>=.35)return{e:"📈",l:"Building",c:"#ffd166"};return{e:"💤",l:"Needs Push",c:"#ff4455"};};
   el.innerHTML=`<div class='lb-banner'><span style='font-size:22px'>🏆</span><div><div style='font-weight:700;font-size:13px;margin-bottom:2px'>This Week: ${esc(wkTop?wkTop.s.name:"—")}</div><div style='font-size:11px;color:rgba(238,240,248,.38);font-weight:500'>${wkTop?wkTop.st.weekTaps:0} taps · Resets Monday</div></div></div>`+
-    rows.map((r,i)=>{const s=r.s,st=r.st,p=st.score/maxScore,badge=pl(p),bar=Math.round(p*100),dots=Array.from({length:10},(_,d)=>d<Math.round(p*10)?"●":"○").join("");return`<div class='lb-item ${i<3?"r"+(i+1):""}' style='flex-direction:column;align-items:stretch;gap:10px'><div style='display:flex;align-items:center;gap:12px'><div class='lb-rank'>${["🥇","🥈","🥉"][i]||i+1}</div><div class='lb-av' style='background:${s.color}22;color:${s.color}'>${ini(s.name)}</div><div style='flex:1'><div style='display:flex;align-items:center;gap:7px;margin-bottom:2px'><div class='lb-nm'>${esc(s.name)}</div><span style='font-size:16px'>${badge.e}</span><span style='font-size:10px;font-weight:700;color:${badge.c};background:${badge.c}18;border-radius:5px;padding:1px 7px'>${badge.l}</span></div><div class='lb-st'>${st.count} taps · ${st.reviews} reviews · ${st.avgStr}⭐ · CTR ${st.ctr}%</div></div><div class='lb-sc'><div class='lb-sc-val'>${st.score}</div><div class='lb-sc-lbl'>pts</div></div></div><div style='display:flex;align-items:center;gap:8px'><div style='font-size:11px;color:${s.color};letter-spacing:.5px;font-family:monospace;flex:1'>${dots}</div><div style='font-size:10px;color:rgba(238,240,248,.35);font-weight:600'>${bar}%</div></div><div style='height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden'><div style='height:100%;width:${bar}%;background:linear-gradient(90deg,${s.color},${badge.c});border-radius:2px'></div></div></div>`;}).join("")+
+    rows.map((r,i)=>{const s=r.s,st=r.st,p=st.score/maxScore,badge=pl(p),bar=Math.round(p*100),dots=Array.from({length:10},(_,d)=>d<Math.round(p*10)?"●":"○").join("");return`<div class='lb-item ${i<3?"r"+(i+1):""}' style='flex-direction:column;align-items:stretch;gap:10px'><div style='display:flex;align-items:center;gap:12px'><div class='lb-rank'>${["🥇","🥈","🥉"][i]||i+1}</div><div class='lb-av' style='background:${s.color}22;color:${s.color}'>${staffIni(staffParts(s))}</div><div style='flex:1'><div style='display:flex;align-items:center;gap:7px;margin-bottom:2px'><div class='lb-nm'>${esc(staffDisplayName(staffParts(s)))}</div><span style='font-size:16px'>${badge.e}</span><span style='font-size:10px;font-weight:700;color:${badge.c};background:${badge.c}18;border-radius:5px;padding:1px 7px'>${badge.l}</span></div><div class='lb-st'>${st.count} taps · ${st.reviews} reviews · ${st.avgStr}⭐ · CTR ${st.ctr}%</div></div><div class='lb-sc'><div class='lb-sc-val'>${st.score}</div><div class='lb-sc-lbl'>pts</div></div></div><div style='display:flex;align-items:center;gap:8px'><div style='font-size:11px;color:${s.color};letter-spacing:.5px;font-family:monospace;flex:1'>${dots}</div><div style='font-size:10px;color:rgba(238,240,248,.35);font-weight:600'>${bar}%</div></div><div style='height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden'><div style='height:100%;width:${bar}%;background:linear-gradient(90deg,${s.color},${badge.c});border-radius:2px'></div></div></div>`;}).join("")+
     `<div style='margin-top:10px;font-size:11px;color:rgba(238,240,248,.28);font-weight:500'>Score = Taps×10 + Reviews×15 + 5★×5</div>`;
 }
 
@@ -1111,9 +1150,9 @@ function buildStaffChart(active, mx) {
   if (_chartMode==="donut") {
     const tot=active.reduce((a)=>a+getDemoTaps().length,0)||1;
     const segs=active.map(s=>({pct:getDemoTaps().length/tot,c:s.color}));
-    return `<div style='display:flex;align-items:center;gap:16px'>${buildDonut(segs,80)}<div>${active.map(s=>{const n=getDemoTaps().length;return`<div style='display:flex;align-items:center;gap:7px;margin-bottom:7px'><div style='width:10px;height:10px;border-radius:50%;background:${s.color};flex-shrink:0'></div><div style='font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>${esc(s.name.split(" ")[0])}</div><div style='font-size:12px;font-weight:800;color:${s.color}'>${n}</div></div>`}).join("")}</div></div>`;
+    return `<div style='display:flex;align-items:center;gap:16px'>${buildDonut(segs,80)}<div>${active.map(s=>{const n=getDemoTaps().length;return`<div style='display:flex;align-items:center;gap:7px;margin-bottom:7px'><div style='width:10px;height:10px;border-radius:50%;background:${s.color};flex-shrink:0'></div><div style='font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>${esc(staffParts(s).firstName||s.name)}</div><div style='font-size:12px;font-weight:800;color:${s.color}'>${n}</div></div>`}).join("")}</div></div>`;
   }
-  return active.map(s=>{const n=getDemoTaps().length;return`<div class='bar-row'><div class='bar-nm'>${esc(s.name.split(" ")[0])}</div><div class='bar-track'><div class='bar-fill' style='width:${Math.round(n/mx*100)}%;background:${s.color}'></div></div><div class='bar-v' style='color:${s.color}'>${n}</div></div>`;}).join("");
+  return active.map(s=>{const n=getDemoTaps().length;return`<div class='bar-row'><div class='bar-nm'>${esc(staffParts(s).firstName||s.name)}</div><div class='bar-track'><div class='bar-fill' style='width:${Math.round(n/mx*100)}%;background:${s.color}'></div></div><div class='bar-v' style='color:${s.color}'>${n}</div></div>`;}).join("");
 }
 
 function buildDonut(segs, size) {
@@ -1132,27 +1171,97 @@ function renderStaffMgmt(body, biz) {
 function renderSList(biz) {
   const el=$("slist"); if(!el) return;
   const base=window.location.origin+"/"+biz.slug+"/tap/";
-  el.innerHTML=biz.staff.map(s=>`<div class='plain-card' style='opacity:${s.active?1:0.5};margin-bottom:9px'><div style='display:flex;align-items:center;gap:11px'><div style='width:40px;height:40px;border-radius:50%;background:${s.color}22;color:${s.color};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0'>${ini(s.name)}</div><div style='flex:1;min-width:0'><div style='font-weight:700;font-size:13px;margin-bottom:2px'>${esc(s.name)}${!s.active?" <span style='font-size:10px;background:rgba(255,68,85,.1);color:#ff4455;border-radius:4px;padding:1px 6px'>Inactive</span>":""}</div><div style='font-size:11px;color:rgba(238,240,248,.38);font-weight:500'>Passcode: ${s.passcode}</div></div><div style='display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end'><button onclick='_copyUrl("${base+s.id}")' class='btn btn-ghost btn-sm'>📋</button><button onclick='_editStaff("${s.id}")' class='btn btn-ghost btn-sm'>✏</button><button onclick='_togStaff("${s.id}")' class='btn btn-ghost btn-sm'>${s.active?"Deactivate":"Activate"}</button><button onclick='_rmStaff("${s.id}")' class='btn btn-danger btn-sm'>✕</button></div></div><div style='margin-top:8px;padding:7px 9px;background:#15171f;border-radius:8px;font-size:11px;color:#00e5a0;word-break:break-all;font-weight:500'>${base+s.id}</div></div>`).join("");
+  el.innerHTML=biz.staff.map(s=>{
+    const sp=staffParts(s);
+    const displayName=staffDisplayName(sp);
+    const urlSlug=staffUrlSlug(sp);
+    const tapUrl=base+urlSlug;
+    return `<div class='plain-card' style='opacity:${s.active?1:0.5};margin-bottom:9px'>
+      <div style='display:flex;align-items:center;gap:11px'>
+        <div style='width:40px;height:40px;border-radius:50%;background:${s.color}22;color:${s.color};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0'>${staffIni(sp)}</div>
+        <div style='flex:1;min-width:0'>
+          <div style='font-weight:700;font-size:13px;margin-bottom:2px'>${esc(displayName)}${!s.active?" <span style='font-size:10px;background:rgba(255,68,85,.1);color:#ff4455;border-radius:4px;padding:1px 6px'>Inactive</span>":""}</div>
+          <div style='font-size:11px;color:rgba(238,240,248,.38);font-weight:500'>Passcode: ${s.passcode}</div>
+        </div>
+        <div style='display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end'>
+          <button onclick='_copyUrl("${tapUrl}")' class='btn btn-ghost btn-sm'>📋</button>
+          <button onclick='_editStaff("${s.id}")' class='btn btn-ghost btn-sm'>✏</button>
+          <button onclick='_togStaff("${s.id}")' class='btn btn-ghost btn-sm'>${s.active?"Deactivate":"Activate"}</button>
+          <button onclick='_rmStaff("${s.id}")' class='btn btn-danger btn-sm'>✕</button>
+        </div>
+      </div>
+      <div style='margin-top:8px;padding:7px 9px;background:#15171f;border-radius:8px;font-size:11px;color:#00e5a0;word-break:break-all;font-weight:500'>${tapUrl}</div>
+    </div>`;
+  }).join("");
 
+  window._previewStaffUrl=function() {
+    const fn=($("ns-fn")||$("es-fn")||{}).value?.trim()||"";
+    const li=($("ns-li")||$("es-li")||{}).value?.trim().slice(0,1)||"";
+    const preview=$("ns-url-preview"); if(!preview) return;
+    if(!fn) { preview.textContent=""; return; }
+    const urlSlug=staffUrlSlug({firstName:fn,lastInitial:li});
+    preview.textContent="tapplus.link/"+biz.slug+"/tap/"+urlSlug;
+  };
   window._copyUrl=url=>navigator.clipboard.writeText(url).then(()=>showToast("URL copied!")).catch(()=>showToast(url));
   window._togStaff=sid=>{biz.staff=biz.staff.map(s=>s.id===sid?{...s,active:!s.active}:s);saveBiz(biz);renderSList(biz);};
-  window._rmStaff=sid=>{const s=biz.staff.find(x=>x.id===sid);if(!s||!confirm("Remove "+s.name+"?"))return;biz.staff=biz.staff.filter(x=>x.id!==sid);saveBiz(biz);renderSList(biz);};
+  window._rmStaff=sid=>{const s=biz.staff.find(x=>x.id===sid);if(!s||!confirm("Remove "+staffDisplayName(staffParts(s))+"?"))return;biz.staff=biz.staff.filter(x=>x.id!==sid);saveBiz(biz);renderSList(biz);};
   window._chgMgrPin=()=>{
     showModal(`<div class='modal-head'><div class='modal-title'>Change Manager PIN</div><button class='modal-close' onclick='closeModal()'>×</button></div><div style='display:flex;flex-direction:column;gap:11px'><div style='background:#15171f;border-radius:9px;padding:10px 12px;font-size:12px;color:rgba(238,240,248,.38);font-weight:500'>Current: <strong style='color:#eef0f8'>${biz.mgrPin}</strong></div><div><div class='field-lbl'>New PIN</div><input class='inp' id='mp1' type='tel' maxlength='4'/></div><div><div class='field-lbl'>Confirm</div><input class='inp' id='mp2' type='tel' maxlength='4'/></div><div id='mp-err' style='color:#ff4455;font-size:12px;min-height:14px;font-weight:500'></div><button class='btn btn-primary btn-full' onclick='_saveMPin()'>Update PIN</button></div>`);
     window._saveMPin=()=>{const p1=($("mp1")||{}).value||"",p2=($("mp2")||{}).value||"",err=$("mp-err");if(!/^\d{4}$/.test(p1)){if(err)err.textContent="Must be 4 digits";return;}if(p1!==p2){if(err)err.textContent="PINs don't match";return;}biz.mgrPin=p1;saveBiz(biz);closeModal();showToast("PIN updated!");};
   };
   window._addStaff=()=>{
     window._selC=COLORS[0];
-    showModal(`<div class='modal-head'><div class='modal-title'>Add Staff</div><button class='modal-close' onclick='closeModal()'>×</button></div><div style='display:flex;flex-direction:column;gap:11px'><div><div class='field-lbl'>Name</div><input class='inp' id='ns-n' placeholder='e.g. Sam W.'/></div><div><div class='field-lbl'>4-Digit Passcode</div><input class='inp' id='ns-p' type='tel' maxlength='4'/><div id='ns-err' style='color:#ff4455;font-size:12px;margin-top:4px;min-height:14px;font-weight:500'></div></div><div><div class='field-lbl'>Color</div><div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:4px'>${COLORS.map((c,i)=>`<div data-c='${c}' onclick='_pC(this)' style='width:27px;height:27px;border-radius:50%;background:${c};cursor:pointer;outline:${i===0?"3px solid rgba(255,255,255,.8)":"none"};outline-offset:2px'></div>`).join("")}</div></div><button class='btn btn-primary btn-full' onclick='_saveStaff()'>Add</button></div>`);
+    showModal(`<div class='modal-head'><div class='modal-title'>Add Staff</div><button class='modal-close' onclick='closeModal()'>×</button></div><div style='display:flex;flex-direction:column;gap:11px'>
+      <div style='display:grid;grid-template-columns:1fr 80px;gap:8px'>
+        <div><div class='field-lbl'>First Name</div><input class='inp' id='ns-fn' placeholder='Alisha' oninput='_previewStaffUrl()'/>  </div>
+        <div><div class='field-lbl'>Last Initial</div><input class='inp' id='ns-li' placeholder='S' maxlength='1' style='text-align:center;text-transform:uppercase;font-size:18px;font-weight:800' oninput='this.value=this.value.toUpperCase();_previewStaffUrl()'/></div>
+      </div>
+      <div id='ns-url-preview' style='font-size:11px;color:#00e5a0;font-weight:600;min-height:14px'></div>
+      <div><div class='field-lbl'>4-Digit Passcode</div><input class='inp' id='ns-p' type='tel' maxlength='4'/><div id='ns-err' style='color:#ff4455;font-size:12px;margin-top:4px;min-height:14px;font-weight:500'></div></div>
+      <div><div class='field-lbl'>Color</div><div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:4px'>${COLORS.map((c,i)=>`<div data-c='${c}' onclick='_pC(this)' style='width:27px;height:27px;border-radius:50%;background:${c};cursor:pointer;outline:${i===0?"3px solid rgba(255,255,255,.8)":"none"};outline-offset:2px'></div>`).join("")}</div></div>
+      <button class='btn btn-primary btn-full' onclick='_saveStaff()'>Add</button>
+    </div>`);
     window._pC=el=>{window._selC=el.dataset.c;document.querySelectorAll("[data-c]").forEach(d=>d.style.outline="none");el.style.outline="3px solid rgba(255,255,255,.8)";el.style.outlineOffset="2px";};
-    window._saveStaff=()=>{const n=($("ns-n")||{}).value?.trim()||"",p=($("ns-p")||{}).value?.trim()||"",err=$("ns-err");if(!n){if(err)err.textContent="Name required";return;}if(!/^\d{4}$/.test(p)){if(err)err.textContent="Must be 4 digits";return;}if(biz.staff.find(s=>s.passcode===p)){if(err)err.textContent="Passcode in use";return;}biz.staff.push({id:uid(),name:n,color:window._selC||COLORS[0],passcode:p,active:true});saveBiz(biz);closeModal();renderSList(biz);showToast("Staff added!");};
+    window._saveStaff=()=>{
+      const fn=($("ns-fn")||{}).value?.trim()||"";
+      const li=($("ns-li")||{}).value?.trim().slice(0,1).toUpperCase()||"";
+      const p =($("ns-p") ||{}).value?.trim()||"";
+      const err=$("ns-err");
+      if(!fn){if(err)err.textContent="First name required";return;}
+      if(!/^\d{4}$/.test(p)){if(err)err.textContent="Must be 4 digits";return;}
+      if(biz.staff.find(s=>s.passcode===p)){if(err)err.textContent="Passcode in use";return;}
+      biz.staff.push({id:uid(),firstName:fn,lastInitial:li,color:window._selC||COLORS[0],passcode:p,active:true});
+      saveBiz(biz);closeModal();renderSList(biz);showToast("Staff added!");
+    };
   };
   window._editStaff=sid=>{
-    const s=biz.staff.find(x=>x.id===sid);if(!s)return;window._selC=s.color;
-    showModal(`<div class='modal-head'><div class='modal-title'>Edit: ${esc(s.name)}</div><button class='modal-close' onclick='closeModal()'>×</button></div><div style='display:flex;flex-direction:column;gap:11px'><div><div class='field-lbl'>Name</div><input class='inp' id='es-n' value='${esc(s.name)}'/></div><div><div class='field-lbl'>Passcode</div><input class='inp' id='es-p' type='tel' maxlength='4' value='${s.passcode}'/><div id='es-err' style='color:#ff4455;font-size:12px;margin-top:4px;min-height:14px;font-weight:500'></div></div><div><div class='field-lbl'>Color</div><div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:4px'>${COLORS.map(c=>`<div data-c='${c}' onclick='_pC(this)' style='width:27px;height:27px;border-radius:50%;background:${c};cursor:pointer;outline:${c===s.color?"3px solid rgba(255,255,255,.8)":"none"};outline-offset:2px'></div>`).join("")}</div></div><button class='btn btn-primary btn-full' onclick='_saveEdit("${sid}")'>Save</button></div>`);
+    const s=biz.staff.find(x=>x.id===sid);if(!s)return;
+    const sp=staffParts(s);
+    window._selC=s.color;
+    showModal(`<div class='modal-head'><div class='modal-title'>Edit: ${esc(staffDisplayName(sp))}</div><button class='modal-close' onclick='closeModal()'>×</button></div><div style='display:flex;flex-direction:column;gap:11px'>
+      <div style='display:grid;grid-template-columns:1fr 80px;gap:8px'>
+        <div><div class='field-lbl'>First Name</div><input class='inp' id='es-fn' value='${esc(sp.firstName)}' oninput='_previewStaffUrl()'/>  </div>
+        <div><div class='field-lbl'>Last Initial</div><input class='inp' id='es-li' value='${esc(sp.lastInitial||"")}' maxlength='1' style='text-align:center;text-transform:uppercase;font-size:18px;font-weight:800' oninput='this.value=this.value.toUpperCase();_previewStaffUrl()'/></div>
+      </div>
+      <div id='ns-url-preview' style='font-size:11px;color:#00e5a0;font-weight:600;min-height:14px'></div>
+      <div><div class='field-lbl'>Passcode</div><input class='inp' id='es-p' type='tel' maxlength='4' value='${s.passcode}'/><div id='es-err' style='color:#ff4455;font-size:12px;margin-top:4px;min-height:14px;font-weight:500'></div></div>
+      <div><div class='field-lbl'>Color</div><div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:4px'>${COLORS.map(c=>`<div data-c='${c}' onclick='_pC(this)' style='width:27px;height:27px;border-radius:50%;background:${c};cursor:pointer;outline:${c===s.color?"3px solid rgba(255,255,255,.8)":"none"};outline-offset:2px'></div>`).join("")}</div></div>
+      <button class='btn btn-primary btn-full' onclick='_saveEdit("${sid}")'>Save</button>
+    </div>`);
     window._pC=el=>{window._selC=el.dataset.c;document.querySelectorAll("[data-c]").forEach(d=>d.style.outline="none");el.style.outline="3px solid rgba(255,255,255,.8)";el.style.outlineOffset="2px";};
-    window._saveEdit=sid2=>{const n=($("es-n")||{}).value?.trim()||"",p=($("es-p")||{}).value?.trim()||"",err=$("es-err");if(!n){if(err)err.textContent="Name required";return;}if(!/^\d{4}$/.test(p)){if(err)err.textContent="Must be 4 digits";return;}if(biz.staff.find(s=>s.passcode===p&&s.id!==sid2)){if(err)err.textContent="Passcode in use";return;}biz.staff=biz.staff.map(s=>s.id===sid2?{...s,name:n,passcode:p,color:window._selC||s.color}:s);saveBiz(biz);closeModal();renderSList(biz);showToast("Saved!");};
+    window._saveEdit=sid2=>{
+      const fn=($("es-fn")||{}).value?.trim()||"";
+      const li=($("es-li")||{}).value?.trim().slice(0,1).toUpperCase()||"";
+      const p =($("es-p") ||{}).value?.trim()||"";
+      const err=$("es-err");
+      if(!fn){if(err)err.textContent="First name required";return;}
+      if(!/^\d{4}$/.test(p)){if(err)err.textContent="Must be 4 digits";return;}
+      if(biz.staff.find(s=>s.passcode===p&&s.id!==sid2)){if(err)err.textContent="Passcode in use";return;}
+      biz.staff=biz.staff.map(s=>s.id===sid2?{...s,firstName:fn,lastInitial:li,passcode:p,color:window._selC||s.color}:s);
+      saveBiz(biz);closeModal();renderSList(biz);showToast("Saved!");
+    };
   };
+;
 }
 
 // ─── LINKS TAB ─────────────────────────────
@@ -1187,7 +1296,7 @@ function renderGoalsTab(body, biz) {
       el.innerHTML=`<div style='display:flex;justify-content:flex-end;margin-bottom:10px'><button onclick='_addGoal("team",null)' class='btn btn-primary btn-sm'>+ Add Team Goal</button></div>`+(goals.length?goals.map(g=>goalRowMgr(g,"team",null,biz)).join(""):"<div style='text-align:center;padding:30px;color:rgba(238,240,248,.38);font-size:13px'>No team goals yet.</div>");
     } else {
       const active=biz.staff.filter(s=>s.active);
-      el.innerHTML=`<div class='pills' id='gpills'>${active.map((s,i)=>`<div class='pill${i===0?" active":""}' onclick='_gStaff("${s.id}",this)'><div class='pill-av' style='background:${s.color}22;color:${s.color}'>${ini(s.name)}</div>${s.name.split(" ")[0]}</div>`).join("")}</div><div id='gbody'></div>`;
+      el.innerHTML=`<div class='pills' id='gpills'>${active.map((s,i)=>`<div class='pill${i===0?" active":""}' onclick='_gStaff("${s.id}",this)'><div class='pill-av' style='background:${s.color}22;color:${s.color}'>${staffIni(staffParts(s))}</div>${staffParts(s).firstName||s.name}</div>`).join("")}</div><div id='gbody'></div>`;
       window._gStaff=function(sid,pill){
         document.querySelectorAll("#gpills .pill").forEach(p=>p.classList.remove("active"));if(pill)pill.classList.add("active");
         const s=biz.staff.find(x=>x.id===sid);const goals=(biz.staffGoals&&biz.staffGoals[sid])||[];
@@ -1229,8 +1338,25 @@ window._delGoal=function(gid,type,sid) {
 // ─── BRANDING TAB ──────────────────────────
 function renderBrandingTab(body, biz) {
   const b={...DEFAULT_BRAND,...(biz.brand||{})};
-  body.innerHTML=`<div style='background:#15171f;border-radius:9px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:rgba(238,240,248,.38);line-height:1.6;font-weight:500'>Controls what customers see at <strong style='color:#eef0f8'>tapplus.link/${esc(biz.slug)}</strong>. Customers see none of the dashboard.</div><div class='field-lbl'>Business Name</div><input class='inp' id='br-n' value='${esc(b.name)}' style='margin-bottom:8px'/><div class='field-lbl'>Tagline</div><input class='inp' id='br-t' value='${esc(b.tagline)}' style='margin-bottom:8px'/><div class='field-lbl'>Logo URL (leave blank to show business name)</div><input class='inp' id='br-l' value='${esc(b.logoUrl)}' placeholder='https://…' style='margin-bottom:8px'/><div class='field-lbl'>Rating Question</div><input class='inp' id='br-q' value='${esc(b.ratingQuestion)}' style='margin-bottom:8px'/><div class='field-lbl'>Review Prompt (4-5★)</div><input class='inp' id='br-rp' value='${esc(b.reviewPrompt)}' style='margin-bottom:8px'/><div class='field-lbl'>Thank You Message</div><input class='inp' id='br-ty' value='${esc(b.thankYouMsg)}' style='margin-bottom:8px'/><div class='field-lbl'>Low Rating Message (1-3★)</div><input class='inp' id='br-lr' value='${esc(b.lowRatingMsg)}' style='margin-bottom:12px'/><div style='display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px'><div><div class='field-lbl'>Brand Color</div><input type='color' id='br-bc' value='${b.brandColor||"#00e5a0"}' style='width:100%;height:36px;border:none;background:none;cursor:pointer;border-radius:6px'/></div><div><div class='field-lbl'>Background</div><input type='color' id='br-bg' value='${b.bgColor||"#07080c"}' style='width:100%;height:36px;border:none;background:none;cursor:pointer;border-radius:6px'/></div><div><div class='field-lbl'>Text</div><input type='color' id='br-tc' value='${b.textColor||"#ffffff"}' style='width:100%;height:36px;border:none;background:none;cursor:pointer;border-radius:6px'/></div></div><div style='display:flex;gap:8px'><button onclick='window.open("/${esc(biz.slug)}","_blank")' class='btn btn-ghost btn-full'>👁 Preview</button><button onclick='_saveBrand()' class='btn btn-primary btn-full'>Save Branding</button></div>`;
+  body.innerHTML=`<div style='background:#15171f;border-radius:9px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:rgba(238,240,248,.38);line-height:1.6;font-weight:500'>Controls what customers see at <strong style='color:#eef0f8'>tapplus.link/${esc(biz.slug)}</strong>. Customers see none of the dashboard.</div><div class='field-lbl'>Business Name</div><input class='inp' id='br-n' value='${esc(b.name)}' style='margin-bottom:8px'/><div class='field-lbl'>Tagline</div><input class='inp' id='br-t' value='${esc(b.tagline)}' style='margin-bottom:8px'/><div class='field-lbl'>Logo URL</div>
+      <input class='inp' id='br-l' value='${esc(b.logoUrl)}' placeholder='https://your-logo.png' style='margin-bottom:6px' oninput='_previewLogo()'/>
+      <div id='logo-preview' style='margin-bottom:8px;min-height:0'>
+        ${b.logoUrl ? `<img src='${esc(b.logoUrl)}' style='height:52px;max-width:160px;object-fit:contain;border-radius:8px;border:1px solid rgba(255,255,255,.08);padding:6px;background:#0e0f15' onerror='this.style.display="none"'/>` : ""}
+      </div>
+      <div style='background:#15171f;border-radius:8px;padding:9px 11px;margin-bottom:8px;font-size:11px;color:rgba(238,240,248,.38);line-height:1.6'>
+        💡 Use a direct image link. Upload your logo free at
+        <a href='https://imgbb.com' target='_blank' style='color:#00e5a0;text-decoration:none'>imgbb.com</a> or
+        <a href='https://postimages.org' target='_blank' style='color:#00e5a0;text-decoration:none'>postimages.org</a>
+        — copy the direct link and paste above.
+      </div><div class='field-lbl'>Rating Question</div><input class='inp' id='br-q' value='${esc(b.ratingQuestion)}' style='margin-bottom:8px'/><div class='field-lbl'>Review Prompt (4-5★)</div><input class='inp' id='br-rp' value='${esc(b.reviewPrompt)}' style='margin-bottom:8px'/><div class='field-lbl'>Thank You Message</div><input class='inp' id='br-ty' value='${esc(b.thankYouMsg)}' style='margin-bottom:8px'/><div class='field-lbl'>Low Rating Message (1-3★)</div><input class='inp' id='br-lr' value='${esc(b.lowRatingMsg)}' style='margin-bottom:12px'/><div style='display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px'><div><div class='field-lbl'>Brand Color</div><input type='color' id='br-bc' value='${b.brandColor||"#00e5a0"}' style='width:100%;height:36px;border:none;background:none;cursor:pointer;border-radius:6px'/></div><div><div class='field-lbl'>Background</div><input type='color' id='br-bg' value='${b.bgColor||"#07080c"}' style='width:100%;height:36px;border:none;background:none;cursor:pointer;border-radius:6px'/></div><div><div class='field-lbl'>Text</div><input type='color' id='br-tc' value='${b.textColor||"#ffffff"}' style='width:100%;height:36px;border:none;background:none;cursor:pointer;border-radius:6px'/></div></div><div style='display:flex;gap:8px'><button onclick='window.open("/${esc(biz.slug)}","_blank")' class='btn btn-ghost btn-full'>👁 Preview</button><button onclick='_saveBrand()' class='btn btn-primary btn-full'>Save Branding</button></div>`;
   window._saveBrand=()=>{biz.brand={name:($("br-n")||{}).value?.trim()||b.name,tagline:($("br-t")||{}).value?.trim()||"",logoUrl:($("br-l")||{}).value?.trim()||"",ratingQuestion:($("br-q")||{}).value?.trim()||DEFAULT_BRAND.ratingQuestion,reviewPrompt:($("br-rp")||{}).value?.trim()||DEFAULT_BRAND.reviewPrompt,thankYouMsg:($("br-ty")||{}).value?.trim()||DEFAULT_BRAND.thankYouMsg,lowRatingMsg:($("br-lr")||{}).value?.trim()||DEFAULT_BRAND.lowRatingMsg,brandColor:($("br-bc")||{}).value||"#00e5a0",bgColor:($("br-bg")||{}).value||"#07080c",textColor:($("br-tc")||{}).value||"#ffffff"};saveBiz(biz);showToast("Branding saved!");};
+  window._previewLogo = function() {
+    const url = ($("br-l")||{}).value?.trim()||"";
+    const prev = $("logo-preview"); if (!prev) return;
+    if (!url) { prev.innerHTML = ""; return; }
+    prev.innerHTML = `<img src='${esc(url)}' style='height:52px;max-width:160px;object-fit:contain;border-radius:8px;border:1px solid rgba(255,255,255,.08);padding:6px;background:#0e0f15' onerror='this.style.display="none"'/>`;
+  };
+
 }
 
 // ─── ESTIMATOR ─────────────────────────────
