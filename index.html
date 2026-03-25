@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -49,7 +50,7 @@ input::placeholder,textarea::placeholder{color:rgba(238,240,248,0.38)}
 .hub-card-arrow{font-size:16px;color:rgba(238,240,248,0.38);margin-left:auto;flex-shrink:0}
 .ai-status{display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;transition:color .2s;font-weight:500;margin-top:2px}
 .ai-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-.admin-btn{position:absolute;top:16px;left:16px;background:none;border:none;color:rgba(238,240,248,.1);font-size:16px;cursor:pointer;padding:6px;border-radius:7px;transition:color .2s;font-family:'Nunito',system-ui,-apple-system,sans-serif}
+.admin-btn{position:absolute;top:16px;left:16px;background:none;border:none;color:rgba(238,240,248,.1);font-size:16px;cursor:pointer;padding:6px;border-radius:7px;transition:color .2s;font-family:‘Nunito’,system-ui,-apple-system,sans-serif}
 
 /* ── PIN ── */
 .pin-view{align-items:center;justify-content:center;padding:40px 20px;text-align:center}
@@ -68,17 +69,17 @@ input::placeholder,textarea::placeholder{color:rgba(238,240,248,0.38)}
 .dash-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;gap:10px}
 .dash-name{font-size:15px;font-weight:800;letter-spacing:-.02em}
 .dash-sub{font-size:11px;color:rgba(238,240,248,0.38);margin-top:2px;font-weight:500}
-.dash-exit{background:#15171f;border:1px solid rgba(255,255,255,0.06);border-radius:8px;color:rgba(238,240,248,0.38);font-size:12px;padding:7px 12px;cursor:pointer;font-family:'Nunito',system-ui,-apple-system,sans-serif;font-weight:600}
+.dash-exit{background:#15171f;border:1px solid rgba(255,255,255,0.06);border-radius:8px;color:rgba(238,240,248,0.38);font-size:12px;padding:7px 12px;cursor:pointer;font-family:‘Nunito’,system-ui,-apple-system,sans-serif;font-weight:600}
 .dash-tabs{display:flex;padding:0 18px;border-bottom:1px solid rgba(255,255,255,0.06);overflow-x:auto;flex-shrink:0;scrollbar-width:none}
 .dash-tabs::-webkit-scrollbar{display:none}
-.dash-tab{background:none;border:none;font-size:11px;font-weight:700;color:rgba(238,240,248,0.38);cursor:pointer;padding:11px 11px 9px;border-bottom:2px solid transparent;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;display:flex;align-items:center;gap:5px;font-family:'Nunito',system-ui,-apple-system,sans-serif;transition:color .15s}
+.dash-tab{background:none;border:none;font-size:11px;font-weight:700;color:rgba(238,240,248,0.38);cursor:pointer;padding:11px 11px 9px;border-bottom:2px solid transparent;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;display:flex;align-items:center;gap:5px;font-family:‘Nunito’,system-ui,-apple-system,sans-serif;transition:color .15s}
 .dash-tab.active{color:#00e5a0;border-bottom-color:#00e5a0}
 .dash-tab.ai.active{color:#a78bfa;border-bottom-color:#a78bfa}
 .dash-body{padding:18px;overflow-y:auto;flex:1}
 
 /* ── CARDS ── */
 .ai-card{background:linear-gradient(135deg,rgba(167,139,250,.05),rgba(129,140,248,.02));border:1px solid rgba(167,139,250,.14);border-radius:16px;padding:18px;position:relative;overflow:hidden;margin-bottom:13px}
-.ai-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(167,139,250,.3),transparent)}
+.ai-card::before{content:’’;position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(167,139,250,.3),transparent)}
 .ai-card-head{display:flex;align-items:center;gap:10px;margin-bottom:13px}
 .ai-card-ico{width:34px;height:34px;border-radius:9px;background:rgba(167,139,250,.1);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
 .ai-card-title{font-size:14px;font-weight:800;letter-spacing:-.01em}
@@ -96,14 +97,14 @@ input::placeholder,textarea::placeholder{color:rgba(238,240,248,0.38)}
 .ai-out-lbl{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#a78bfa;margin-bottom:9px;display:flex;align-items:center;gap:5px}
 .ai-out-text{font-size:13px;line-height:1.75;color:rgba(238,240,248,.83)}
 .ai-out-text strong{color:#eef0f8;font-weight:700}
-.ai-refresh{margin-top:9px;font-size:11px;color:rgba(238,240,248,.22);background:none;border:none;cursor:pointer;font-family:'Nunito',system-ui,-apple-system,sans-serif;font-weight:500}
+.ai-refresh{margin-top:9px;font-size:11px;color:rgba(238,240,248,.22);background:none;border:none;cursor:pointer;font-family:‘Nunito’,system-ui,-apple-system,sans-serif;font-weight:500}
 .ai-loading{display:flex;align-items:center;gap:9px;color:rgba(238,240,248,0.38);font-size:13px;padding:15px 0;font-weight:500}
 .ai-spinner{width:16px;height:16px;border:2px solid rgba(167,139,250,.15);border-top-color:#a78bfa;border-radius:50%;animation:spin .65s linear infinite;flex-shrink:0}
 .ai-nokey{background:rgba(255,107,53,.07);border:1px solid rgba(255,107,53,.18);border-radius:10px;padding:12px 13px;font-size:13px;color:#ff6b35;line-height:1.6;font-weight:500}
 .ai-err{color:#ff4455;font-size:13px;font-weight:500}
 
 /* ── BUTTONS ── */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;cursor:pointer;font-family:'Nunito',system-ui,-apple-system,sans-serif;font-weight:700;letter-spacing:-.01em;transition:all .15s;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;cursor:pointer;font-family:‘Nunito’,system-ui,-apple-system,sans-serif;font-weight:700;letter-spacing:-.01em;transition:all .15s;white-space:nowrap}
 .btn:active{transform:scale(.97)}
 .btn-primary{background:#00e5a0;color:#07080c;border-radius:12px;padding:12px 20px;font-size:13px}
 .btn-ghost{background:#15171f;color:rgba(238,240,248,0.38);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:9px 14px;font-size:12px}
@@ -113,9 +114,9 @@ input::placeholder,textarea::placeholder{color:rgba(238,240,248,0.38)}
 .btn-full{width:100%}
 
 /* ── INPUT ── */
-.inp{width:100%;background:#15171f;border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:11px 13px;color:#eef0f8;font-size:14px;outline:none;transition:border-color .18s;font-family:'Nunito',system-ui,-apple-system,sans-serif;font-weight:500}
+.inp{width:100%;background:#15171f;border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:11px 13px;color:#eef0f8;font-size:14px;outline:none;transition:border-color .18s;font-family:‘Nunito’,system-ui,-apple-system,sans-serif;font-weight:500}
 .inp:focus{border-color:rgba(167,139,250,.45)}
-.sel{width:100%;background:#15171f;border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:11px 13px;color:#eef0f8;font-size:14px;outline:none;cursor:pointer;font-family:'Nunito',system-ui,-apple-system,sans-serif;font-weight:500}
+.sel{width:100%;background:#15171f;border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:11px 13px;color:#eef0f8;font-size:14px;outline:none;cursor:pointer;font-family:‘Nunito’,system-ui,-apple-system,sans-serif;font-weight:500}
 .field-lbl{font-size:11px;font-weight:700;color:rgba(238,240,248,0.38);letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px}
 
 /* ── MODAL ── */
@@ -161,13 +162,13 @@ input::placeholder,textarea::placeholder{color:rgba(238,240,248,0.38)}
 .tap-star:active{transform:scale(.88)}
 .tap-link{display:flex;align-items:center;gap:13px;background:#0e0f15;border:1px solid rgba(255,255,255,0.11);border-radius:14px;padding:15px 17px;text-decoration:none;color:#eef0f8;margin-bottom:9px;transition:border-color .18s;text-align:left}
 .tap-link:active{transform:scale(.98)}
-.tap-textarea{width:100%;background:#0e0f15;border:1px solid rgba(255,255,255,0.11);border-radius:12px;padding:12px 13px;color:#eef0f8;font-size:14px;resize:none;outline:none;font-family:'Nunito',system-ui,-apple-system,sans-serif;font-weight:500;line-height:1.5}
+.tap-textarea{width:100%;background:#0e0f15;border:1px solid rgba(255,255,255,0.11);border-radius:12px;padding:12px 13px;color:#eef0f8;font-size:14px;resize:none;outline:none;font-family:‘Nunito’,system-ui,-apple-system,sans-serif;font-weight:500;line-height:1.5}
 
 /* ── ADMIN ── */
 .admin-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:300;display:flex;align-items:center;justify-content:center;padding:15px}
 .admin-panel{background:#0e0f15;border:1px solid rgba(255,255,255,0.11);border-radius:20px;width:100%;max-width:480px;max-height:93vh;overflow:hidden;display:flex;flex-direction:column;animation:up .2s ease}
 .admin-tabs{display:flex;padding:0 18px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0}
-.admin-tab{background:none;border:none;font-size:11px;font-weight:700;color:rgba(238,240,248,0.38);cursor:pointer;padding:11px 11px 9px;border-bottom:2px solid transparent;letter-spacing:.04em;text-transform:uppercase;font-family:'Nunito',system-ui,-apple-system,sans-serif;transition:color .15s}
+.admin-tab{background:none;border:none;font-size:11px;font-weight:700;color:rgba(238,240,248,0.38);cursor:pointer;padding:11px 11px 9px;border-bottom:2px solid transparent;letter-spacing:.04em;text-transform:uppercase;font-family:‘Nunito’,system-ui,-apple-system,sans-serif;transition:color .15s}
 .admin-tab.active{color:#00e5a0;border-bottom-color:#00e5a0}
 .admin-body{padding:18px;overflow-y:auto;flex:1}
 .link-row{display:flex;align-items:center;gap:9px;background:#15171f;border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:11px 13px;margin-bottom:8px}
@@ -192,12 +193,14 @@ input::placeholder,textarea::placeholder{color:rgba(238,240,248,0.38)}
 
 @media(max-width:400px){.stat-grid{grid-template-columns:repeat(3,1fr)}}
 </style>
+
 </head>
 <body>
 <div id="app" style="min-height:100vh">
   <!-- views injected by JS -->
 </div>
 
-<script src="./app.js"></script>
+<script src="/app.js"></script>
+
 </body>
 </html>
