@@ -622,7 +622,7 @@ window.deleteGoal = function(gid, type, sid) {
 // ESTIMATOR TAB
 // ═══════════════════════════════════════════
 function renderEstimatorTab(body) {
-  body.innerHTML = "<div class='ai-card'><div class='ai-card-head'><div class='ai-card-ico'>📈</div><div><div class='ai-card-title'>Platform Rating Estimator</div><div class='ai-card-sub'>AI predicts your path to your target</div></div></div><div class='field-lbl' style='margin-top:4px'>Platform</div><select class='sel' id='est-plat' style='margin-bottom:10px'><option value='google'>Google Reviews</option><option value='yelp'>Yelp</option><option value='tripadvisor'>Tripadvisor</option></select><div class='field-lbl'>Current Review Count</div><input class='inp' id='est-count' type='number' step='1' placeholder='71' value='71' style='margin-bottom:10px'/><div class='field-lbl'>Current Rating</div><input class='inp' id='est-cur' type='number' step='0.1' placeholder='4.2' value='4.2' style='margin-bottom:10px'/><div class='field-lbl'>Target Rating</div><input class='inp' id='est-tgt' type='number' step='0.1' placeholder='4.5' value='4.5' style='margin-bottom:10px'/><div class='field-lbl'>Team Avg Rating</div><input class='inp' id='est-avg' type='number' step='0.1' placeholder='4.2' value='4.2' style='margin-bottom:12px'/><button class='btn btn-ai btn-full' style='font-size:14px;padding:12px' onclick='calcEstimate()'>✦ Calculate &amp; Predict</button><div id='est-result' style='margin-top:14px'></div></div>";
+  body.innerHTML = "<div class='ai-card'><div class='ai-card-head'><div class='ai-card-ico'>📈</div><div><div class='ai-card-title'>Platform Rating Estimator</div><div class='ai-card-sub'>AI predicts your path to your target</div></div></div><div class='field-lbl' style='margin-top:4px'>Platform</div><select class='sel' id='est-plat' style='margin-bottom:10px'><option value='google'>Google Reviews</option><option value='yelp'>Yelp</option><option value='tripadvisor'>Tripadvisor</option></select><div class='field-lbl'>Current Review Count</div><input class='inp' id='est-count' type='number' step='1' placeholder='71' value='71' style='margin-bottom:10px'/><div class='field-lbl'>Current Rating</div><input class='inp' id='est-cur' type='number' step='0.1' placeholder='4.2' value='4.2' style='margin-bottom:10px'/><div class='field-lbl'>Target Rating</div><input class='inp' id='est-tgt' type='number' step='0.1' placeholder='4.5' value='4.5' style='margin-bottom:12px'/><button class='btn btn-ai btn-full' style='font-size:14px;padding:12px' onclick='calcEstimate()'>✦ Calculate &amp; Predict</button><div id='est-result' style='margin-top:14px'></div></div>";
 }
 
 window.calcEstimate = function() {
@@ -630,18 +630,21 @@ window.calcEstimate = function() {
   const c = parseInt(($("est-count")||{}).value) || 0;
   const cur = parseFloat(($("est-cur")||{}).value) || 0;
   const tgt = parseFloat(($("est-tgt")||{}).value) || 0;
-  const avg = parseFloat(($("est-avg")||{}).value) || 0;
   const el = $("est-result");
   if (!el) return;
-  if (!c || !cur || !tgt || !avg) { el.innerHTML = "<div style='color:#ff4455;font-size:13px;font-weight:500'>Fill in all fields first.</div>"; return; }
+  // Auto-compute team avg from tap data
+  const active = STATE.staff.filter(s => s.active);
+  const allTaps = active.flatMap(s => mkTaps(s.id.charCodeAt(1)||1));
+  const avg = allTaps.length ? parseFloat((allTaps.reduce((a,t) => a+t.rating,0)/allTaps.length).toFixed(1)) : 4.2;
+  if (!c || !cur || !tgt) { el.innerHTML = "<div style='color:#ff4455;font-size:13px;font-weight:500'>Fill in all fields first.</div>"; return; }
   if (tgt <= cur) { el.innerHTML = "<div style='color:#ffd166;font-size:13px;font-weight:600;text-align:center;padding:8px 0'>✓ Already at or above target!</div>"; return; }
-  if (avg <= tgt) { el.innerHTML = "<div style='color:#ff6b35;font-size:13px;line-height:1.6;font-weight:500'>⚠️ Team avg is at or below the target. Improve service quality first.</div>"; return; }
+  if (avg <= tgt) { el.innerHTML = "<div style='color:#ff6b35;font-size:13px;line-height:1.6;font-weight:500'>⚠️ Your team\'s current average rating is at or below the target. Focus on improving service quality first.</div>"; return; }
   const n = Math.max(0, Math.ceil((tgt*(c+1) - cur*c) / (avg-tgt)));
   const tps = Math.ceil(n / 0.65);
   const pace = Math.max(1, STATE.staff.filter(s => s.active).length * 3);
   const wks = Math.ceil(tps / pace);
   const p = "Restaurant wants " + plat + " from " + cur + "★ to " + tgt + "★. Facts: " + c + " current reviews, team avg " + avg + "★, ~" + n + " more 5★ reviews needed, ~" + tps + " taps needed at 65% CTR, ~" + wks + " weeks at current pace. Give: 1) Realistic timeframe 2) Key strategy 3) 2 specific tactics 4) One risk to watch. Under 180 words.";
-  el.innerHTML = "<div class='est-grid'>" + [[n,"5★ reviews needed","#00e5a0"],[tps,"Est. taps needed","#ffd166"],[wks+"w","At current pace","#7c6aff"],[avg+"★","Team avg","#ff6b35"]].map(([v,l,c]) => "<div class='est-card'><div class='est-val' style='color:" + c + "'>" + v + "</div><div class='est-lbl'>" + l + "</div></div>").join("") + "</div><div id='ai-est' data-aiblock='1' data-prompt='" + encodeURIComponent(p) + "' data-msg='Running AI prediction…'></div>";
+  el.innerHTML = "<div class='est-grid'>" + [[n,"5★ reviews needed","#00e5a0"],[tps,"Est. taps needed","#ffd166"],[wks+"w","At current pace","#7c6aff"],[avg+"★","Your team avg","#ff6b35"]].map(([v,l,c]) => "<div class='est-card'><div class='est-val' style='color:" + c + "'>" + v + "</div><div class='est-lbl'>" + l + "</div></div>").join("") + "</div><div id='ai-est' data-aiblock='1' data-prompt='" + encodeURIComponent(p) + "' data-msg='Running AI prediction…'></div>";
   renderAIBlock("ai-est", p, "est_" + plat + "_" + cur + "_" + tgt, "Running AI prediction…");
 };
 
@@ -657,7 +660,7 @@ function renderStaffList() {
   const el = $("staff-list");
   if (!el) return;
   const base = window.location.origin;
-  el.innerHTML = STATE.staff.map(s => "<div class='plain-card' style='opacity:" + (s.active ? 1 : 0.5) + "'><div style='display:flex;align-items:center;gap:11px'><div style='width:40px;height:40px;border-radius:50%;background:" + s.color + "22;color:" + s.color + ";display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0'>" + ini(s.name) + "</div><div style='flex:1;min-width:0'><div style='font-weight:700;font-size:13px;margin-bottom:2px'>" + esc(s.name) + (!s.active ? " <span style='font-size:10px;background:rgba(255,68,85,.1);color:#ff4455;border-radius:4px;padding:1px 6px;margin-left:3px;font-weight:700'>Inactive</span>" : "") + "</div><div style='font-size:11px;color:rgba(238,240,248,.38);font-weight:500'>Passcode: " + s.passcode + "</div></div><div style='display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end'><button class='btn btn-ghost btn-sm' onclick='copyTapUrl(\"" + s.id + "\")'>📋 URL</button><button class='btn btn-ghost btn-sm' onclick='toggleStaffActive(\"" + s.id + "\")'>" + (s.active ? "Deactivate" : "Activate") + "</button><button class='btn btn-danger btn-sm' onclick='removeStaffMember(\"" + s.id + "\")'>Remove</button></div></div><div style='margin-top:9px;padding:7px 9px;background:#15171f;border-radius:8px;font-size:11px;color:rgba(238,240,248,.38);word-break:break-all;font-weight:500'><span style='color:#00e5a0'>" + base + "/tap/" + s.id + "</span></div></div>").join("");
+  el.innerHTML = STATE.staff.map(s => "<div class='plain-card' style='opacity:" + (s.active ? 1 : 0.5) + "'><div style='display:flex;align-items:center;gap:11px'><div style='width:40px;height:40px;border-radius:50%;background:" + s.color + "22;color:" + s.color + ";display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0'>" + ini(s.name) + "</div><div style='flex:1;min-width:0'><div style='font-weight:700;font-size:13px;margin-bottom:2px'>" + esc(s.name) + (!s.active ? " <span style='font-size:10px;background:rgba(255,68,85,.1);color:#ff4455;border-radius:4px;padding:1px 6px;margin-left:3px;font-weight:700'>Inactive</span>" : "") + "</div><div style='font-size:11px;color:rgba(238,240,248,.38);font-weight:500'>Passcode: " + s.passcode + "</div></div><div style='display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end'><button class='btn btn-ghost btn-sm' onclick='openEditStaffModal(\"" + s.id + "\")'>✏ Edit</button><button class='btn btn-ghost btn-sm' onclick='copyTapUrl(\"" + s.id + "\")'>📋 URL</button><button class='btn btn-ghost btn-sm' onclick='toggleStaffActive(\"" + s.id + "\")'>" + (s.active ? "Deactivate" : "Activate") + "</button><button class='btn btn-danger btn-sm' onclick='removeStaffMember(\"" + s.id + "\")'>Remove</button></div></div><div style='margin-top:9px;padding:7px 9px;background:#15171f;border-radius:8px;font-size:11px;color:rgba(238,240,248,.38);word-break:break-all;font-weight:500'><span style='color:#00e5a0'>" + base + "/tap/" + s.id + "</span></div></div>").join("");
 }
 
 window.copyTapUrl = function(sid) {
@@ -683,6 +686,45 @@ window.saveNewStaff = function() {
   save(); closeModal(); renderStaffList();
 };
 
+
+window.openEditStaffModal = function(sid) {
+  const s = STATE.staff.find(x => x.id===sid);
+  if (!s) return;
+  window._editStaffId = sid;
+  window._selEditColor = s.color;
+  const swatches = COLORS.map(function(c) {
+    const sel = c===s.color ? " outline:3px solid rgba(255,255,255,.8);outline-offset:2px;" : "";
+    return "<div data-ec='" + c + "' onclick='window._editColorClick(this)' style='width:27px;height:27px;border-radius:50%;background:" + c + ";cursor:pointer;flex-shrink:0;" + sel + "'></div>";
+  }).join("");
+  showModal(
+    "<div class='modal-head'><div class='modal-title'>Edit Staff Member</div><button class='modal-close' onclick='closeModal()'>×</button></div>" +
+    "<div style='display:flex;flex-direction:column;gap:11px'>" +
+      "<div><div class='field-lbl'>Name</div><input class='inp' id='edit-name' value='" + esc(s.name) + "'/></div>" +
+      "<div><div class='field-lbl'>4-Digit Passcode</div><input class='inp' id='edit-pass' type='tel' maxlength='4' value='" + s.passcode + "'/><div id='edit-pass-err' style='color:#ff4455;font-size:12px;margin-top:4px;font-weight:500;min-height:16px'></div></div>" +
+      "<div><div class='field-lbl'>Color</div><div id='edit-color-swatches' style='display:flex;gap:8px;flex-wrap:wrap;margin-top:4px'>" + swatches + "</div></div>" +
+      "<button class='btn btn-primary btn-full' style='margin-top:4px' onclick='saveEditStaff()'>Save Changes</button>" +
+    "</div>"
+  );
+};
+window._editColorClick = function(el) {
+  var c = el.dataset.ec;
+  window._selEditColor = c;
+  document.querySelectorAll("#edit-color-swatches div").forEach(function(d) { d.style.outline = "none"; });
+  el.style.outline = "3px solid rgba(255,255,255,.8)";
+  el.style.outlineOffset = "2px";
+};
+window.saveEditStaff = function() {
+  const sid = window._editStaffId;
+  const name = (($("edit-name")||{}).value||"").trim();
+  const pass = (($("edit-pass")||{}).value||"").trim();
+  const errEl = $("edit-pass-err");
+  if (!name) { if(errEl) errEl.textContent = "Name required"; return; }
+  if (!/^\d{4}$/.test(pass)) { if(errEl) errEl.textContent = "Must be exactly 4 digits"; return; }
+  const conflict = STATE.staff.find(s => s.passcode===pass && s.id!==sid);
+  if (conflict) { if(errEl) errEl.textContent = "Passcode already in use by " + conflict.name; return; }
+  STATE.staff = STATE.staff.map(s => s.id===sid ? Object.assign({},s,{name,passcode:pass,color:window._selEditColor||s.color}) : s);
+  save(); closeModal(); renderStaffList(); showToast("Staff member updated!");
+};
 window.openChangePinModal = function() {
   showModal("<div class='modal-head'><div class='modal-title'>Change Manager PIN</div><button class='modal-close' onclick='closeModal()'>×</button></div><div style='display:flex;flex-direction:column;gap:11px'><div><div class='field-lbl'>New PIN (4 digits)</div><input class='inp' id='new-pin1' type='tel' placeholder='New PIN' maxlength='4'/></div><div><div class='field-lbl'>Confirm PIN</div><input class='inp' id='new-pin2' type='tel' placeholder='Confirm' maxlength='4'/></div><div id='pin-change-msg' style='color:#ff4455;font-size:12px;font-weight:500;min-height:16px'></div><button class='btn btn-primary btn-full' onclick='saveMgrPin()'>Update PIN</button></div>");
 };
@@ -707,8 +749,10 @@ function renderLeaderboardTab(body) {
 }
 
 // ═══════════════════════════════════════════
-// ANALYTICS TAB
+// ANALYTICS TAB — with bar/donut toggle
 // ═══════════════════════════════════════════
+var _chartMode = "bar"; // "bar" or "donut"
+
 function renderAnalyticsTab(body) {
   const active = STATE.staff.filter(s => s.active);
   const all = active.flatMap(s => mkTaps(s.id.charCodeAt(1)||1));
@@ -716,10 +760,141 @@ function renderAnalyticsTab(body) {
   const avg = all.length ? (all.reduce((a,t) => a+t.rating, 0)/all.length).toFixed(1) : "—";
   const pos = all.filter(t => t.rating>=4).length, neg = all.filter(t => t.rating<=3).length;
   const ctr = pos > 0 ? Math.round((revs/pos)*100) : 0;
-  const gT = all.filter(t => t.platform==="google").length, yT = all.filter(t => t.platform==="yelp").length, tT = all.filter(t => t.platform==="tripadvisor").length;
+  const gT = all.filter(t => t.platform==="google").length;
+  const yT = all.filter(t => t.platform==="yelp").length;
+  const tT = all.filter(t => t.platform==="tripadvisor").length;
   const mx = Math.max(...active.map(s => mkTaps(s.id.charCodeAt(1)||1).length), 1);
   const cs = "background:#0e0f15;border:1px solid rgba(255,255,255,.06);border-radius:13px;padding:15px;margin-bottom:9px";
-  body.innerHTML = "<div style='display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:9px'>" + [[tot,"Total Taps","#00e5a0"],[revs,"Reviews Driven","#ffd166"],[avg+"⭐","Avg Rating","#ff6b35"],[ctr+"%","CTR","#7c6aff"],[pos,"Positive","#00e5a0"],[neg,"Negative","#ff4455"]].map(([v,l,c]) => "<div style='" + cs + "'><div style='font-weight:900;font-size:26px;line-height:1;margin-bottom:4px;color:" + c + ";letter-spacing:-.03em'>" + v + "</div><div style='font-size:11px;color:rgba(238,240,248,.38);font-weight:700'>" + l + "</div></div>").join("") + "</div><div style='" + cs + "'><div class='sec-lbl'>Platform Breakdown</div><div style='display:grid;grid-template-columns:repeat(3,1fr);gap:9px'>" + [["🔍",gT,"#00e5a0","Google"],["⭐",yT,"#ffd166","Yelp"],["✈️",tT,"#7c6aff","Tripadvisor"]].map(([ico,n,c,l]) => "<div style='background:#15171f;border-radius:9px;padding:11px;text-align:center'><div style='font-size:18px;margin-bottom:3px'>" + ico + "</div><div style='font-weight:900;font-size:20px;color:" + c + ";letter-spacing:-.03em'>" + n + "</div><div style='font-size:10px;color:rgba(238,240,248,.38);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-top:2px'>" + l + "</div></div>").join("") + "</div></div><div style='" + cs + "'><div class='sec-lbl'>Taps Per Staff</div>" + active.map(s => { const n = mkTaps(s.id.charCodeAt(1)||1).length; return "<div class='bar-row'><div class='bar-nm'>" + esc(s.name.split(" ")[0]) + "</div><div class='bar-track'><div class='bar-fill' style='width:" + Math.round(n/mx*100) + "%;background:" + s.color + "'></div></div><div class='bar-v' style='color:" + s.color + "'>" + n + "</div></div>"; }).join("") + "</div><div style='" + cs + "'><div class='sec-lbl'>Review CTR Per Staff</div>" + active.map(s => { const st = getStats(mkTaps(s.id.charCodeAt(1)||1)); return "<div class='bar-row'><div class='bar-nm'>" + esc(s.name.split(" ")[0]) + "</div><div class='bar-track'><div class='bar-fill' style='width:" + st.ctr + "%;background:linear-gradient(90deg,#00e5a0,#7c6aff)'></div></div><div class='bar-v'>" + st.ctr + "%</div></div>"; }).join("") + "</div>";
+
+  // stat cards
+  const statCards = [[tot,"Total Taps","#00e5a0"],[revs,"Reviews Driven","#ffd166"],[avg+"⭐","Avg Rating","#ff6b35"],[ctr+"%","CTR","#7c6aff"],[pos,"Positive","#00e5a0"],[neg,"Negative","#ff4455"]]
+    .map(([v,l,c]) => "<div style='" + cs + "'><div style='font-weight:900;font-size:26px;line-height:1;margin-bottom:4px;color:" + c + ";letter-spacing:-.03em'>" + v + "</div><div style='font-size:11px;color:rgba(238,240,248,.38);font-weight:700'>" + l + "</div></div>").join("");
+
+  // toggle button
+  var isBar = _chartMode === "bar";
+  var isDon = _chartMode === "donut";
+  var btnBase = "border-radius:9px;font-size:11px;font-weight:700;border:1px solid;padding:6px 12px;cursor:pointer;";
+  var barStyle = btnBase + "background:" + (isBar?"#00e5a0":"#15171f") + ";color:" + (isBar?"#07080c":"rgba(238,240,248,.5)") + ";border-color:" + (isBar?"#00e5a0":"rgba(255,255,255,.08)") + ";";
+  var donStyle = btnBase + "background:" + (isDon?"#00e5a0":"#15171f") + ";color:" + (isDon?"#07080c":"rgba(238,240,248,.5)") + ";border-color:" + (isDon?"#00e5a0":"rgba(255,255,255,.08)") + ";";
+  var toggle = "<div style='display:flex;justify-content:flex-end;margin-bottom:10px;gap:6px'>" +
+    "<button data-cm='bar' onclick='setChartMode(this.dataset.cm)' style='" + barStyle + "'>▬ Bar</button>" +
+    "<button data-cm='donut' onclick='setChartMode(this.dataset.cm)' style='" + donStyle + "'>◉ Donut</button>" +
+  "</div>";
+
+  // platform block
+  const platBlock = "<div style='" + cs + "'><div class='sec-lbl'>Platform Breakdown</div>" + buildPlatChart(gT, yT, tT, tot) + "</div>";
+
+  // taps per staff
+  const tapsBlock = "<div style='" + cs + "'><div class='sec-lbl'>Taps Per Staff</div>" + buildStaffChart(active, mx) + "</div>";
+
+  // ctr per staff
+  const ctrData = active.map(s => ({ s, v: getStats(mkTaps(s.id.charCodeAt(1)||1)).ctr, max: 100, label: getStats(mkTaps(s.id.charCodeAt(1)||1)).ctr + "%" }));
+  const ctrBlock = "<div style='" + cs + "'><div class='sec-lbl'>Review CTR Per Staff</div>" + buildCtrChart(ctrData) + "</div>";
+
+  body.innerHTML = toggle + "<div style='display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:9px'>" + statCards + "</div>" + platBlock + tapsBlock + ctrBlock;
+}
+
+window.setChartMode = function(mode) {
+  _chartMode = mode;
+  const body = $("mgr-body");
+  if (body) renderAnalyticsTab(body);
+};
+
+function buildPlatChart(gT, yT, tT, tot) {
+  const items = [["🔍",gT,"#00e5a0","Google"],["⭐",yT,"#ffd166","Yelp"],["✈️",tT,"#7c6aff","Tripadvisor"]];
+  if (_chartMode === "donut") {
+    const total = gT + yT + tT || 1;
+    const segments = items.map(([,n,c]) => ({ n, c, pct: n/total }));
+    return "<div style='display:flex;align-items:center;gap:18px;flex-wrap:wrap'>" +
+      buildDonut(segments, 80) +
+      "<div style='flex:1;min-width:100px'>" +
+        items.map(([ico,n,c,l]) =>
+          "<div style='display:flex;align-items:center;gap:7px;margin-bottom:8px'>" +
+            "<div style='width:10px;height:10px;border-radius:50%;background:" + c + ";flex-shrink:0'></div>" +
+            "<div style='font-size:12px;font-weight:600;flex:1'>" + l + "</div>" +
+            "<div style='font-size:12px;font-weight:800;color:" + c + "'>" + n + "</div>" +
+          "</div>"
+        ).join("") +
+      "</div>" +
+    "</div>";
+  } else {
+    return "<div style='display:grid;grid-template-columns:repeat(3,1fr);gap:9px'>" +
+      items.map(([ico,n,c,l]) =>
+        "<div style='background:#15171f;border-radius:9px;padding:11px;text-align:center'>" +
+          "<div style='font-size:18px;margin-bottom:3px'>" + ico + "</div>" +
+          "<div style='font-weight:900;font-size:20px;color:" + c + ";letter-spacing:-.03em'>" + n + "</div>" +
+          "<div style='font-size:10px;color:rgba(238,240,248,.38);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-top:2px'>" + l + "</div>" +
+        "</div>"
+      ).join("") +
+    "</div>";
+  }
+}
+
+function buildStaffChart(active, mx) {
+  if (_chartMode === "donut") {
+    const total = Math.max(1, active.reduce((a,s) => a + mkTaps(s.id.charCodeAt(1)||1).length, 0));
+    const segments = active.map(s => ({ n: mkTaps(s.id.charCodeAt(1)||1).length, c: s.color, pct: mkTaps(s.id.charCodeAt(1)||1).length/total }));
+    return "<div style='display:flex;align-items:center;gap:18px;flex-wrap:wrap'>" +
+      buildDonut(segments, 80) +
+      "<div style='flex:1;min-width:80px'>" +
+        active.map(s => {
+          const n = mkTaps(s.id.charCodeAt(1)||1).length;
+          return "<div style='display:flex;align-items:center;gap:7px;margin-bottom:8px'>" +
+            "<div style='width:10px;height:10px;border-radius:50%;background:" + s.color + ";flex-shrink:0'></div>" +
+            "<div style='font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>" + esc(s.name.split(" ")[0]) + "</div>" +
+            "<div style='font-size:12px;font-weight:800;color:" + s.color + "'>" + n + "</div>" +
+          "</div>";
+        }).join("") +
+      "</div>" +
+    "</div>";
+  } else {
+    return active.map(s => {
+      const n = mkTaps(s.id.charCodeAt(1)||1).length;
+      return "<div class='bar-row'><div class='bar-nm'>" + esc(s.name.split(" ")[0]) + "</div><div class='bar-track'><div class='bar-fill' style='width:" + Math.round(n/mx*100) + "%;background:" + s.color + "'></div></div><div class='bar-v' style='color:" + s.color + "'>" + n + "</div></div>";
+    }).join("");
+  }
+}
+
+function buildCtrChart(ctrData) {
+  if (_chartMode === "donut") {
+    const total = Math.max(1, ctrData.reduce((a,x) => a+x.v, 0));
+    const segments = ctrData.map(x => ({ n: x.v, c: x.s.color, pct: x.v/total }));
+    return "<div style='display:flex;align-items:center;gap:18px;flex-wrap:wrap'>" +
+      buildDonut(segments, 80) +
+      "<div style='flex:1;min-width:80px'>" +
+        ctrData.map(x =>
+          "<div style='display:flex;align-items:center;gap:7px;margin-bottom:8px'>" +
+            "<div style='width:10px;height:10px;border-radius:50%;background:" + x.s.color + ";flex-shrink:0'></div>" +
+            "<div style='font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>" + esc(x.s.name.split(" ")[0]) + "</div>" +
+            "<div style='font-size:12px;font-weight:800;color:" + x.s.color + "'>" + x.label + "</div>" +
+          "</div>"
+        ).join("") +
+      "</div>" +
+    "</div>";
+  } else {
+    return ctrData.map(x =>
+      "<div class='bar-row'><div class='bar-nm'>" + esc(x.s.name.split(" ")[0]) + "</div><div class='bar-track'><div class='bar-fill' style='width:" + x.v + "%;background:linear-gradient(90deg,#00e5a0,#7c6aff)'></div></div><div class='bar-v'>" + x.label + "</div></div>"
+    ).join("");
+  }
+}
+
+function buildDonut(segments, size) {
+  // SVG donut chart
+  var r = size * 0.35, cx = size/2, cy = size/2, stroke = size * 0.18;
+  var total = segments.reduce((a,s) => a+s.pct, 0) || 1;
+  var circumference = 2 * Math.PI * r;
+  var offset = 0;
+  var paths = segments.map(function(seg) {
+    var dashLen = (seg.pct / total) * circumference;
+    var gap = circumference - dashLen;
+    var path = "<circle cx='" + cx + "' cy='" + cy + "' r='" + r + "' fill='none' stroke='" + seg.c + "' stroke-width='" + stroke + "' stroke-dasharray='" + dashLen.toFixed(2) + " " + gap.toFixed(2) + "' stroke-dashoffset='" + (-offset * circumference / total).toFixed(2) + "' stroke-linecap='round' transform='rotate(-90 " + cx + " " + cy + ")'/>";
+    offset += seg.pct;
+    return path;
+  });
+  return "<svg width='" + size + "' height='" + size + "' style='flex-shrink:0'>" +
+    "<circle cx='" + cx + "' cy='" + cy + "' r='" + r + "' fill='none' stroke='rgba(255,255,255,.06)' stroke-width='" + stroke + "'/>" +
+    paths.join("") +
+  "</svg>";
 }
 
 // ═══════════════════════════════════════════
