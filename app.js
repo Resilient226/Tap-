@@ -119,36 +119,53 @@ function getFbCfg() {
 
 let _db = null;
 
-function getDb() {
+// Load Firebase SDK dynamically if not already on page
+function loadFbSdk() {
+  return new Promise((resolve) => {
+    if (typeof firebase !== "undefined") { resolve(true); return; }
+    let loaded = 0;
+    const done = () => { loaded++; if (loaded === 2) resolve(true); };
+    const fail = () => resolve(false);
+    const s1 = document.createElement("script");
+    s1.src = "https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js";
+    s1.crossOrigin = "anonymous";
+    s1.onload = done; s1.onerror = fail;
+    const s2 = document.createElement("script");
+    s2.src = "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js";
+    s2.crossOrigin = "anonymous";
+    s2.onload = done; s2.onerror = fail;
+    document.head.appendChild(s1);
+    // Load s2 after s1 to ensure correct order
+    s1.onload = () => { done(); document.head.appendChild(s2); };
+  });
+}
+
+async function getDb() {
   if (_db) return _db;
   const cfg = getFbCfg();
   if (!cfg) return null;
   try {
+    // Ensure SDK is loaded
     if (typeof firebase === "undefined") {
-      console.error("Firebase SDK not loaded");
-      return null;
+      console.warn("Firebase not loaded, loading dynamically...");
+      const ok = await loadFbSdk();
+      if (!ok || typeof firebase === "undefined") {
+        console.error("Firebase SDK failed to load");
+        return null;
+      }
     }
-    // Delete existing app with same name to allow re-init with new config
-    const existing = firebase.apps.find(a => a.name === "[DEFAULT]") ||
-                     firebase.apps.find(a => a.name === "tapplus");
-    if (existing && existing.options.projectId !== cfg.projectId) {
-      existing.delete();
-      _db = null;
-    }
-    const app = firebase.apps.length
-      ? firebase.app()
-      : firebase.initializeApp(cfg);
+    const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(cfg);
     _db = firebase.firestore(app);
     return _db;
   } catch(e) {
-    console.error("getDb error:", e);
+    console.error("getDb error:", e.code, e.message);
     _db = null;
     return null;
   }
 }
 
 async function saveTap(tap) {
-  const db = getDb();
+  const db = await getDb();
   if (!db) { console.warn("saveTap: no db"); return; }
   try {
     await db.collection("taps").doc(tap.id).set(tap);
@@ -157,7 +174,7 @@ async function saveTap(tap) {
 }
 
 async function fbQueryTaps(bizSlug, staffId) {
-  const db = getDb();
+  const db = await getDb();
   if (!db) return null;
   try {
     let q = db.collection("taps").where("bizSlug", "==", bizSlug).limit(500);
@@ -590,10 +607,7 @@ window.saTestFb = async function() {
   set("Checking SDK…", "rgba(238,240,248,.5)");
   await new Promise(r=>setTimeout(r,100));
 
-  if (typeof firebase === "undefined") {
-    set("❌ Firebase SDK not loaded — check internet connection and reload the page", "#ff4455");
-    return;
-  }
+  // SDK may load dynamically — don't block here
 
   const cfg = getFbCfg();
   if (!cfg) { set("❌ No config saved — enter all 3 fields and hit Save Config", "#ff4455"); return; }
@@ -604,8 +618,9 @@ window.saTestFb = async function() {
   try {
     // Re-init with current config
     _db = null;
-    const db = getDb();
-    if (!db) { set("❌ Could not initialize Firebase — check your config values", "#ff4455"); return; }
+    set("Loading Firebase SDK…", "rgba(238,240,248,.5)");
+    const db = await getDb();
+    if (!db) { set("❌ Could not load Firebase SDK — check your internet connection", "#ff4455"); return; }
 
     set("Writing test document…", "rgba(238,240,248,.5)");
     await db.collection("_tapplus_test").doc("ping").set({
