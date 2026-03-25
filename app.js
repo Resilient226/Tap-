@@ -103,12 +103,9 @@ function deleteBiz(sl) {
 const getApiKey  = () => LS.get("tp_key","");
 const getAdminPin= () => LS.get("tp_admin_pin","0000");
 
-// ─── FIREBASE SDK ──────────────────────────
-// Uses official Firebase JS SDK v9 (modular) loaded from CDN in index.html
-// SDK handles auth tokens, retries, and proper API key usage automatically.
-
-let _fbApp = null;
-let _fbDb  = null;
+// ─── FIREBASE REST API (with apiKey auth) ──
+// Uses Firestore REST API. The apiKey MUST be appended as ?key=... on every
+// request — that's what authenticates it. Previous version omitted this.
 
 function getFbCfg() {
   try {
@@ -120,73 +117,111 @@ function getFbCfg() {
   } catch(e) { console.warn("getFbCfg error:", e); return null; }
 }
 
-// Initialize (or re-initialize) Firebase SDK with saved config
-function initFb() {
+function fbBaseUrl(cfg) {
+  // apiKey appended as query param — this is what was missing before
+  return "https://firestore.googleapis.com/v1/projects/"
+    + cfg.projectId
+    + "/databases/(default)/documents";
+}
+
+function toFsVal(v) {
+  if (v == null)              return { nullValue: null };
+  if (typeof v === "boolean") return { booleanValue: v };
+  if (typeof v === "number")  return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+  if (typeof v === "string")  return { stringValue: v };
+  if (Array.isArray(v))       return { arrayValue: { values: v.map(toFsVal) } };
+  if (typeof v === "object") {
+    const f = {};
+    Object.keys(v).forEach(k => f[k] = toFsVal(v[k]));
+    return { mapValue: { fields: f } };
+  }
+  return { stringValue: String(v) };
+}
+
+function toFsDoc(data) {
+  const f = {};
+  Object.keys(data).forEach(k => f[k] = toFsVal(data[k]));
+  return { fields: f };
+}
+
+function fromFsDoc(fields) {
+  const out = {};
+  Object.keys(fields||{}).forEach(k => {
+    const v = fields[k];
+    if      ("stringValue"  in v) out[k] = v.stringValue;
+    else if ("integerValue" in v) out[k] = parseInt(v.integerValue);
+    else if ("doubleValue"  in v) out[k] = parseFloat(v.doubleValue);
+    else if ("booleanValue" in v) out[k] = v.booleanValue;
+    else if ("nullValue"    in v) out[k] = null;
+    // nested maps/arrays left as-is for now
+  });
+  return out;
+}
+
+async function saveTap(tap) {
+  const cfg = getFbCfg();
+  if (!cfg) { console.warn("saveTap: no Firebase config"); return; }
+  try {
+    const url = fbBaseUrl(cfg) + "/taps/" + tap.id + "?key=" + cfg.apiKey;
+    const res = await fetch(url, {
+      method:  "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(toFsDoc(tap))
+    });
+    if (res.ok) {
+      console.log("saveTap OK:", tap.id);
+    } else {
+      const e = await res.json().catch(() => ({}));
+      console.error("saveTap failed:", res.status, e?.error?.message);
+    }
+  } catch(e) { console.error("saveTap error:", e); }
+}
+
+async function fbQueryTaps(bizSlug, staffId) {
   const cfg = getFbCfg();
   if (!cfg) return null;
   try {
-    // If already initialized with same project, reuse
-    if (_fbDb && _fbApp) return _fbDb;
+    const url = "https://firestore.googleapis.com/v1/projects/"
+      + cfg.projectId
+      + "/databases/(default)/documents:runQuery?key=" + cfg.apiKey;
 
-    // Use Firebase compat SDK (loaded via CDN script tag in index.html)
-    // Avoid duplicate app error
-    const existing = firebase.apps.find(a => a.name === "tapplus");
-    _fbApp = existing || firebase.initializeApp(cfg, "tapplus");
-    _fbDb  = firebase.firestore(_fbApp);
+    const body = {
+      structuredQuery: {
+        from: [{ collectionId: "taps" }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: "bizSlug" },
+            op:    "EQUAL",
+            value: { stringValue: bizSlug }
+          }
+        },
+        orderBy: [{ field: { fieldPath: "ts" }, direction: "DESCENDING" }],
+        limit: 500
+      }
+    };
 
-    // Enable offline persistence so writes survive brief network blips
-    _fbDb.settings({ merge: true });
+    const res  = await fetch(url, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!Array.isArray(data)) { console.warn("fbQueryTaps bad response:", data); return []; }
 
-    return _fbDb;
-  } catch(e) {
-    console.error("Firebase init error:", e);
-    return null;
-  }
-}
+    let docs = data
+      .filter(x => x.document)
+      .map(x => fromFsDoc(x.document.fields));
 
-// Write a document using the SDK — apiKey is now actually used
-async function saveTap(tap) {
-  const db = initFb();
-  if (!db) {
-    console.warn("saveTap: Firebase not configured");
-    return;
-  }
-  try {
-    await db.collection("taps").doc(tap.id).set(tap);
-    console.log("Tap saved:", tap.id, "status:", tap.status);
-  } catch(e) {
-    console.error("saveTap error:", e.code, e.message);
-  }
-}
-
-// Query taps by bizSlug (+ optional staffId)
-async function fbQueryTaps(bizSlug, staffId) {
-  const db = initFb();
-  if (!db) return null;
-  try {
-    // Simple query first — just bizSlug, no composite index needed
-    let q = db.collection("taps")
-              .where("bizSlug", "==", bizSlug)
-              .limit(500);
-    const snap = await q.get();
-    let docs = snap.docs.map(d => d.data());
-
-    // Client-side filters (avoids composite index requirement)
+    // Client-side filter: only rated taps, optional staffId
     docs = docs.filter(t => t.status === "rated" || t.rating != null);
     if (staffId) docs = docs.filter(t => t.staffId === staffId);
 
-    // Client-side sort by ts descending
-    docs.sort((a, b) => (b.ts||0) - (a.ts||0));
-
-    console.log("fbQueryTaps:", bizSlug, staffId||"all", "→", docs.length, "results");
+    console.log("fbQueryTaps:", bizSlug, staffId||"all", "→", docs.length);
     return docs;
-  } catch(e) {
-    console.error("fbQueryTaps error:", e.code, e.message);
-    return [];
-  }
+  } catch(e) { console.error("fbQueryTaps error:", e); return []; }
 }
 
-// Session cache — cleared on refresh
+// Session cache
 const _tapCache = {};
 async function getTaps(bizSlug, staffId) {
   const key = bizSlug + "|" + (staffId||"all");
@@ -601,35 +636,42 @@ window.saSaveGroq = function() {
 };
 window.saTestFb = async function() {
   const el = $("fb-test-result");
-  const set = (msg, color) => { if (el) { el.textContent=msg; el.style.color=color; } };
+  const set = (msg, color) => { if (el) { el.textContent = msg; el.style.color = color; } };
 
-  set("Testing connection…", "rgba(238,240,248,.5)");
+  set("Testing…", "rgba(238,240,248,.5)");
 
   const cfg = getFbCfg();
-  if (!cfg) { set("❌ No config saved — fill in all three fields and save first", "#ff4455"); return; }
-
-  // Force re-init so new config is picked up
-  _fbApp = null; _fbDb = null;
-  const db = initFb();
-  if (!db) { set("❌ Firebase failed to initialize — check your config values", "#ff4455"); return; }
+  if (!cfg) { set("❌ Save your config first (all 3 fields required)", "#ff4455"); return; }
 
   try {
-    // Write a test document using the SDK
-    await db.collection("_tapplus_test").doc("ping").set({
-      ping: "ok",
-      ts:   Date.now(),
-      from: "super-admin-test"
+    const url = fbBaseUrl(cfg) + "/_tapplus_test/ping?key=" + cfg.apiKey;
+    const res = await fetch(url, {
+      method:  "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ fields: {
+        ping: { stringValue: "ok" },
+        ts:   { integerValue: String(Date.now()) }
+      }})
     });
-    set("✓ Connected! Check Firestore → _tapplus_test → ping", "#00e5a0");
-  } catch(e) {
-    console.error("Firebase test error:", e);
-    if (e.code === "permission-denied") {
-      set("❌ Permission denied — set Firestore rules to test mode (allow read, write: if true)", "#ff4455");
-    } else if (e.code === "not-found" || e.message?.includes("projectId")) {
-      set("❌ Project not found — double-check your Project ID", "#ff4455");
+
+    if (res.ok) {
+      set("✓ Firebase connected! Tap page will now log data.", "#00e5a0");
     } else {
-      set("❌ " + (e.message||e.code||"Unknown error"), "#ff4455");
+      const err = await res.json().catch(() => ({}));
+      const msg = err?.error?.message || ("HTTP " + res.status);
+      if (res.status === 403 || msg.includes("PERMISSION_DENIED")) {
+        set("❌ Permission denied — go to Firestore → Rules and set to test mode", "#ff4455");
+      } else if (res.status === 404 || msg.includes("NOT_FOUND")) {
+        set("❌ Project not found — check your Project ID (no spaces or typos)", "#ff4455");
+      } else if (res.status === 400) {
+        set("❌ Bad request — check your API Key", "#ff4455");
+      } else {
+        set("❌ " + msg, "#ff4455");
+      }
     }
+  } catch(e) {
+    set("❌ Network error — check your internet connection", "#ff4455");
+    console.error("Firebase test error:", e);
   }
 };
 
@@ -637,8 +679,6 @@ window.saSaveFb = function() {
   const ak=($("fb-ak")||{}).value||"", pid=($("fb-pid")||{}).value||"", aid=($("fb-aid")||{}).value||"";
   if (!ak||!pid||!aid) { showToast("Fill in all three fields"); return; }
   LS.set("tp_fb",{apiKey:ak,projectId:pid,appId:aid});
-  // Reset SDK so it re-initializes with new config
-  _fbApp = null; _fbDb = null;
   showToast("Firebase config saved!"); renderSAPanel($("sa-root"));
 };
 window.saSavePin = function() {
