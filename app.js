@@ -383,148 +383,120 @@ window.selectCoachStaff = function(sid, el) {
 // ═══════════════════════════════════════════
 // ESTIMATOR TAB
 // ═══════════════════════════════════════════
-function getTeamAverageRating() {
-  const activeStaff = STATE.staff.filter((s) => s.active);
-  const allTaps = activeStaff.flatMap((s) => mkTaps(s.id.charCodeAt(1) || 1));
-  if (!allTaps.length) return 0;
-  const total = allTaps.reduce((sum, t) => sum + t.rating, 0);
-  return total / allTaps.length;
-}
-
-function getPlatformReviewCount(platform) {
-  const activeStaff = STATE.staff.filter((s) => s.active);
-  const allTaps = activeStaff.flatMap((s) => mkTaps(s.id.charCodeAt(1) || 1));
-  return allTaps.filter((t) => t.platform === platform && t.review).length;
-}
-
-function getPlatformAverage(platform) {
-  const activeStaff = STATE.staff.filter((s) => s.active);
-  const allTaps = activeStaff.flatMap((s) => mkTaps(s.id.charCodeAt(1) || 1));
-  const platformRatings = allTaps.filter((t) => t.platform === platform && t.review).map((t) => t.rating);
-  if (!platformRatings.length) return 0;
-  return platformRatings.reduce((sum, r) => sum + r, 0) / platformRatings.length;
-}
-
 function renderEstimatorTab(body) {
-  const defaultPlatform = "google";
-  const currentCount = getPlatformReviewCount(defaultPlatform);
-  const currentRating = getPlatformAverage(defaultPlatform);
-  const teamAvg = getTeamAverageRating();
+  body.innerHTML =
+    "<div class='ai-card'>" +
+      "<div class='ai-card-head'>" +
+        "<div class='ai-card-ico'>📈</div>" +
+        "<div>" +
+          "<div class='ai-card-title'>Platform Rating Estimator</div>" +
+          "<div class='ai-card-sub'>Estimate how many new 5★ reviews you need</div>" +
+        "</div>" +
+      "</div>" +
 
-  body.innerHTML = `
-    <div class="ai-card">
-      <div class="ai-card-head">
-        <div class="ai-card-ico">📈</div>
-        <div>
-          <div class="ai-card-title">Platform Rating Estimator</div>
-          <div class="ai-card-sub">AI predicts your path to your target</div>
-        </div>
-      </div>
+      "<div class='field-lbl' style='margin-top:4px'>Platform</div>" +
+      "<select class='sel' id='est-plat' style='margin-bottom:10px'>" +
+        "<option value='google'>Google Reviews</option>" +
+        "<option value='yelp'>Yelp</option>" +
+        "<option value='tripadvisor'>Tripadvisor</option>" +
+      "</select>" +
 
-      <div class="field-lbl" style="margin-top:4px">Platform</div>
-      <select class="sel" id="est-plat" style="margin-bottom:10px" onchange="updateEstimatorAutoFields()">
-        <option value="google">Google Reviews</option>
-        <option value="yelp">Yelp</option>
-        <option value="tripadvisor">Tripadvisor</option>
-      </select>
+      "<div class='field-lbl'>Current Review Count</div>" +
+      "<input class='inp' id='est-count' type='number' step='1' placeholder='71' value='71' style='margin-bottom:10px'/>" +
 
-      <div class="field-lbl">Current Review Count</div>
-      <input class="inp" id="est-count" type="number" value="${currentCount}" readonly style="margin-bottom:10px;opacity:.7;cursor:not-allowed"/>
+      "<div class='field-lbl'>Current Rating</div>" +
+      "<input class='inp' id='est-cur' type='number' step='0.1' placeholder='4.2' value='4.2' style='margin-bottom:10px'/>" +
 
-      <div class="field-lbl">Current Rating</div>
-      <input class="inp" id="est-cur" type="number" value="${currentRating ? currentRating.toFixed(1) : "0.0"}" readonly style="margin-bottom:10px;opacity:.7;cursor:not-allowed"/>
+      "<div class='field-lbl'>Target Rating</div>" +
+      "<input class='inp' id='est-tgt' type='number' step='0.1' placeholder='4.5' value='4.5' style='margin-bottom:12px'/>" +
 
-      <div class="field-lbl">Team Avg Rating</div>
-      <input class="inp" id="est-avg" type="number" value="${teamAvg ? teamAvg.toFixed(1) : "0.0"}" readonly style="margin-bottom:10px;opacity:.7;cursor:not-allowed"/>
-
-      <div class="field-lbl">Target Rating</div>
-      <input class="inp" id="est-tgt" type="number" step="0.1" placeholder="4.5" value="4.5" style="margin-bottom:12px"/>
-
-      <button class="btn btn-ai btn-full" style="font-size:14px;padding:12px" onclick="calcEstimate()">✦ Calculate &amp; Predict</button>
-      <div id="est-result" style="margin-top:14px"></div>
-    </div>
-  `;
+      "<button class='btn btn-ai btn-full' style='font-size:14px;padding:12px' onclick='calcEstimate()'>✦ Calculate &amp; Predict</button>" +
+      "<div id='est-result' style='margin-top:14px'></div>" +
+    "</div>";
 }
-
-window.updateEstimatorAutoFields = function () {
-  const plat = ($("est-plat") || {}).value || "google";
-  const currentCount = getPlatformReviewCount(plat);
-  const currentRating = getPlatformAverage(plat);
-  const teamAvg = getTeamAverageRating();
-
-  if ($("est-count")) $("est-count").value = currentCount;
-  if ($("est-cur")) $("est-cur").value = currentRating ? currentRating.toFixed(1) : "0.0";
-  if ($("est-avg")) $("est-avg").value = teamAvg ? teamAvg.toFixed(1) : "0.0";
-};
 
 window.calcEstimate = function () {
   const plat = ($("est-plat") || {}).value || "google";
-  const c = getPlatformReviewCount(plat);
-  const cur = getPlatformAverage(plat);
-  const avg = getTeamAverageRating();
+  const c = parseInt(($("est-count") || {}).value, 10) || 0;
+  const cur = parseFloat(($("est-cur") || {}).value) || 0;
   const tgt = parseFloat(($("est-tgt") || {}).value) || 0;
   const el = $("est-result");
 
   if (!el) return;
 
-  if (!tgt) {
-    el.innerHTML = "<div style='color:#ff4455;font-size:13px;font-weight:500'>Enter a target rating first.</div>";
+  if (!c || !cur || !tgt) {
+    el.innerHTML =
+      "<div style='color:#ff4455;font-size:13px;font-weight:500'>Fill in all fields first.</div>";
     return;
   }
 
-  if (c <= 0 || cur <= 0 || avg <= 0) {
-    el.innerHTML = "<div style='color:#ff4455;font-size:13px;font-weight:500'>Not enough review data yet to estimate.</div>";
+  if (cur < 0 || cur > 5 || tgt < 0 || tgt > 5) {
+    el.innerHTML =
+      "<div style='color:#ff4455;font-size:13px;font-weight:500'>Ratings must be between 0 and 5.</div>";
     return;
   }
 
   if (tgt <= cur) {
-    el.innerHTML = "<div style='color:#ffd166;font-size:13px;font-weight:600;text-align:center;padding:8px 0'>✓ Already at or above target!</div>";
+    el.innerHTML =
+      "<div style='color:#ffd166;font-size:13px;font-weight:600;text-align:center;padding:8px 0'>✓ Already at or above target!</div>";
     return;
   }
 
-  if (avg <= tgt) {
-    el.innerHTML = "<div style='color:#ff6b35;font-size:13px;line-height:1.6;font-weight:500'>⚠️ Team avg is at or below the target. Improve service quality first.</div>";
+  if (tgt >= 5) {
+    el.innerHTML =
+      "<div style='color:#ff6b35;font-size:13px;line-height:1.6;font-weight:500'>A perfect 5.0 is technically possible but usually takes a very large number of new 5★ reviews.</div>";
+  }
+
+  // Assume future incoming reviews are 5-star reviews
+  const futureAvg = 5.0;
+
+  // Solve:
+  // (cur*c + 5*n) / (c+n) >= tgt
+  const numerator = tgt * c - cur * c;
+  const denominator = futureAvg - tgt;
+
+  if (denominator <= 0) {
+    el.innerHTML =
+      "<div style='color:#ff4455;font-size:13px;font-weight:500'>Target must be below 5.0 for this estimator.</div>";
     return;
   }
 
-  const n = Math.max(0, Math.ceil((tgt * (c + 1) - cur * c) / (avg - tgt)));
-  const tps = Math.ceil(n / 0.65);
+  const n = Math.max(0, Math.ceil(numerator / denominator));
+  const tps = Math.ceil(n / 0.65); // assume 65% conversion from happy taps to reviews
   const pace = Math.max(1, STATE.staff.filter((s) => s.active).length * 3);
   const wks = Math.ceil(tps / pace);
 
   const p =
-    "Restaurant wants " + plat +
-    " from " + cur.toFixed(1) + "★ to " + tgt.toFixed(1) + "★. Facts: " +
-    c + " current reviews, team avg " + avg.toFixed(1) +
-    "★, ~" + n + " more 5★ reviews needed, ~" + tps +
-    " taps needed at 65% CTR, ~" + wks +
-    " weeks at current pace. Give: 1) Realistic timeframe 2) Key strategy 3) 2 specific tactics 4) One risk to watch. Under 180 words.";
+    "A restaurant wants to raise its " + plat +
+    " rating from " + cur + "★ to " + tgt + "★. " +
+    "It currently has " + c + " reviews. " +
+    "Assume new incoming reviews are 5★. " +
+    "Estimated additional 5★ reviews needed: " + n + ". " +
+    "Estimated taps needed at 65% conversion: " + tps + ". " +
+    "Estimated time at current pace: " + wks + " weeks. " +
+    "Give: 1) realistic interpretation 2) one key strategy 3) 2 tactical recommendations 4) one caution. Under 180 words.";
 
   el.innerHTML =
     "<div class='est-grid'>" +
-    [
-      [n, "5★ reviews needed", "#00e5a0"],
-      [tps, "Est. taps needed", "#ffd166"],
-      [wks + "w", "At current pace", "#7c6aff"],
-      [avg.toFixed(1) + "★", "Team avg", "#ff6b35"]
-    ]
-      .map(
-        ([v, l, c]) =>
-          "<div class='est-card'><div class='est-val' style='color:" +
-          c +
-          "'>" +
-          v +
-          "</div><div class='est-lbl'>" +
-          l +
-          "</div></div>"
-      )
-      .join("") +
+      [
+        [n, "5★ reviews needed", "#00e5a0"],
+        [tps, "Est. taps needed", "#ffd166"],
+        [wks + "w", "At current pace", "#7c6aff"],
+        ["5.0★", "Assumed new reviews", "#ff6b35"]
+      ]
+        .map(function (item) {
+          return (
+            "<div class='est-card'>" +
+              "<div class='est-val' style='color:" + item[2] + "'>" + item[0] + "</div>" +
+              "<div class='est-lbl'>" + item[1] + "</div>" +
+            "</div>"
+          );
+        })
+        .join("") +
     "</div>" +
-    "<div id='ai-est' data-aiblock='1' data-prompt='" +
-    encodeURIComponent(p) +
-    "' data-msg='Running AI prediction…'></div>";
+    "<div id='ai-est' data-aiblock='1' data-prompt='" + encodeURIComponent(p) + "' data-msg='Running AI prediction…'></div>";
 
-  renderAIBlock("ai-est", p, "est_" + plat + "_" + cur.toFixed(1) + "_" + tgt.toFixed(1), "Running AI prediction…");
+  renderAIBlock("ai-est", p, "est_" + plat + "_" + cur + "_" + tgt, "Running AI prediction…");
 };
 // ═══════════════════════════════════════════
 // STAFF MANAGEMENT TAB
