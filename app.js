@@ -643,35 +643,72 @@ window.saTestFb = async function() {
   const cfg = getFbCfg();
   if (!cfg) { set("❌ Save your config first (all 3 fields required)", "#ff4455"); return; }
 
+  // Step 1 — confirm config loaded
+  set("Step 1/3: Config loaded ✓  Project: " + cfg.projectId, "rgba(238,240,248,.5)");
+  await new Promise(r => setTimeout(r, 400));
+
+  // Step 2 — try a simple GET first (no write needed, just checks connectivity + auth)
   try {
-    const url = fbBaseUrl(cfg) + "/_tapplus_test/ping?key=" + cfg.apiKey;
-    const res = await fetch(url, {
+    const getUrl = "https://firestore.googleapis.com/v1/projects/"
+      + cfg.projectId
+      + "/databases/(default)?key=" + cfg.apiKey;
+
+    set("Step 2/3: Connecting to Firestore…", "rgba(238,240,248,.5)");
+    const probe = await fetch(getUrl);
+
+    if (!probe.ok) {
+      const e = await probe.json().catch(() => ({}));
+      const msg = e?.error?.message || ("HTTP " + probe.status);
+      if (probe.status === 400) {
+        set("❌ API Key invalid or missing. Re-paste your apiKey and save.", "#ff4455");
+      } else if (probe.status === 403) {
+        set("❌ Permission denied. Check Firestore rules are in test mode.", "#ff4455");
+      } else if (probe.status === 404) {
+        set("❌ Project ID not found: '" + cfg.projectId + "' — check for typos.", "#ff4455");
+      } else {
+        set("❌ Firestore error: " + msg, "#ff4455");
+      }
+      return;
+    }
+
+    set("Step 2/3: Connected ✓  Writing test document…", "rgba(238,240,248,.5)");
+    await new Promise(r => setTimeout(r, 300));
+
+  } catch(e) {
+    // fetch itself threw — true network issue or CORS
+    console.error("Firestore probe error:", e.name, e.message);
+    if (e.name === "TypeError" && e.message.includes("fetch")) {
+      set("❌ CORS or network block. Open browser console (F12) and check the exact error on the failed request to firestore.googleapis.com", "#ff4455");
+    } else {
+      set("❌ " + e.name + ": " + e.message, "#ff4455");
+    }
+    return;
+  }
+
+  // Step 3 — write test document
+  try {
+    const writeUrl = "https://firestore.googleapis.com/v1/projects/"
+      + cfg.projectId
+      + "/databases/(default)/documents/_tapplus_test/ping?key=" + cfg.apiKey;
+
+    const res = await fetch(writeUrl, {
       method:  "PATCH",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ fields: {
         ping: { stringValue: "ok" },
-        ts:   { integerValue: String(Date.now()) }
+        ts:   { integerValue: String(Date.now()) },
+        from: { stringValue: "tap-plus-admin-test" }
       }})
     });
 
     if (res.ok) {
-      set("✓ Firebase connected! Tap page will now log data.", "#00e5a0");
+      set("✓ Firebase working! Check Firestore → _tapplus_test → ping", "#00e5a0");
     } else {
       const err = await res.json().catch(() => ({}));
-      const msg = err?.error?.message || ("HTTP " + res.status);
-      if (res.status === 403 || msg.includes("PERMISSION_DENIED")) {
-        set("❌ Permission denied — go to Firestore → Rules and set to test mode", "#ff4455");
-      } else if (res.status === 404 || msg.includes("NOT_FOUND")) {
-        set("❌ Project not found — check your Project ID (no spaces or typos)", "#ff4455");
-      } else if (res.status === 400) {
-        set("❌ Bad request — check your API Key", "#ff4455");
-      } else {
-        set("❌ " + msg, "#ff4455");
-      }
+      set("❌ Write failed: " + (err?.error?.message || "HTTP " + res.status), "#ff4455");
     }
   } catch(e) {
-    set("❌ Network error — check your internet connection", "#ff4455");
-    console.error("Firebase test error:", e);
+    set("❌ Write error: " + e.message, "#ff4455");
   }
 };
 
