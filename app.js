@@ -252,35 +252,119 @@ function renderPlatformHome(app) {
   app.innerHTML = `
     <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:40px 24px;text-align:center;position:relative;z-index:1">
       <div style="font-weight:900;font-size:52px;letter-spacing:-.04em;margin-bottom:8px;background:linear-gradient(135deg,#fff 60%,rgba(255,255,255,.4));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Tap<span style="-webkit-text-fill-color:#00e5a0">+</span></div>
-      <div style="font-size:14px;color:rgba(238,240,248,.4);font-weight:500;margin-bottom:52px;letter-spacing:.02em">Smart review management</div>
+      <div style="font-size:14px;color:rgba(238,240,248,.4);font-weight:500;margin-bottom:48px;letter-spacing:.02em">Smart review management</div>
 
-      <div style="width:100%;max-width:340px;display:flex;flex-direction:column;gap:12px;margin-bottom:20px">
-        <div style="background:#0e0f15;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:20px 22px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:14px" onclick="window.location.href=prompt('Enter your business dashboard URL:')">
+      <div style="width:100%;max-width:320px">
+        <div style="font-size:13px;font-weight:600;color:rgba(238,240,248,.4);margin-bottom:16px;letter-spacing:.04em;text-transform:uppercase">Enter Store Code</div>
+        <input id="store-code-inp" class="inp" placeholder="e.g. JAMES or 4821" maxlength="20"
+          style="text-align:center;font-size:18px;font-weight:700;letter-spacing:.08em;margin-bottom:8px;text-transform:uppercase"
+          oninput="this.value=this.value.toUpperCase()"
+          onkeydown="if(event.key==='Enter')_submitStoreCode()"/>
+        <div id="store-code-err" style="color:#ff4455;font-size:12px;font-weight:500;min-height:16px;margin-bottom:12px"></div>
+        <button onclick="_submitStoreCode()" style="width:100%;padding:14px;background:#00e5a0;color:#07080c;border:none;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Continue →</button>
+      </div>
+
+      <button onclick="showSuperAdminPin()" style="position:fixed;bottom:16px;left:16px;background:none;border:none;cursor:pointer;padding:8px;border-radius:8px;color:rgba(238,240,248,.1);font-size:11px;font-weight:700;letter-spacing:.06em;font-family:inherit;transition:color .2s" onmouseover="this.style.color='rgba(238,240,248,.4)'" onmouseout="this.style.color='rgba(238,240,248,.1)'">Admin</button>
+    </div>`;
+
+  // Auto-focus the input
+  setTimeout(() => { const inp = $("store-code-inp"); if (inp) inp.focus(); }, 100);
+
+  window._submitStoreCode = function() {
+    const raw = ($("store-code-inp") || {}).value || "";
+    const code = raw.trim().toLowerCase().replace(/\s+/g, "-");
+    const err = $("store-code-err");
+
+    if (!code) {
+      if (err) err.textContent = "Enter your store code";
+      return;
+    }
+
+    const biz = getBiz(code);
+    if (!biz) {
+      if (err) err.textContent = "Store code not found. Check with your manager.";
+      // Shake the input
+      const inp = $("store-code-inp");
+      if (inp) { inp.style.borderColor = "#ff4455"; setTimeout(() => inp.style.borderColor = "", 1500); }
+      return;
+    }
+
+    // Valid — go to step 2: role select for this business
+    renderRoleSelect(app, biz);
+  };
+}
+
+function renderRoleSelect(app, biz) {
+  const bc = biz.brand?.brandColor || "#00e5a0";
+  app.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:40px 24px;text-align:center;position:relative;z-index:1">
+      <button onclick="renderPlatformHome($('app'))" style="position:absolute;top:20px;left:20px;background:none;border:none;color:rgba(238,240,248,.4);font-size:22px;cursor:pointer">←</button>
+
+      <div style="width:48px;height:48px;border-radius:14px;background:${bc}22;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;color:${bc};margin-bottom:12px;flex-shrink:0">${ini(biz.name)}</div>
+      <div style="font-weight:800;font-size:20px;letter-spacing:-.02em;margin-bottom:4px">${esc(biz.name)}</div>
+      <div style="font-size:13px;color:rgba(238,240,248,.38);font-weight:500;margin-bottom:40px">Who are you?</div>
+
+      <div style="width:100%;max-width:300px;display:flex;flex-direction:column;gap:11px">
+        <div onclick="_goToPIN('staff')" style="background:#0e0f15;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:20px 22px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:14px;transition:border-color .15s" onmouseover="this.style.borderColor='rgba(255,255,255,.2)'" onmouseout="this.style.borderColor='rgba(255,255,255,.08)'">
           <div style="width:44px;height:44px;border-radius:13px;background:rgba(0,229,160,.08);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">👤</div>
           <div style="flex:1">
-            <div style="font-weight:700;font-size:15px;margin-bottom:3px;letter-spacing:-.01em">Staff Login</div>
-            <div style="font-size:12px;color:rgba(238,240,248,.38);line-height:1.5">Enter via your business dashboard link</div>
+            <div style="font-weight:700;font-size:15px;margin-bottom:2px">Staff</div>
+            <div style="font-size:12px;color:rgba(238,240,248,.38)">Enter your employee PIN</div>
           </div>
-          <div style="font-size:16px;color:rgba(238,240,248,.3)">›</div>
+          <div style="font-size:18px;color:rgba(238,240,248,.25)">›</div>
         </div>
 
-        <div style="background:#0e0f15;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:20px 22px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:14px" onclick="window.location.href=prompt('Enter your business dashboard URL:')">
+        <div onclick="_goToPIN('manager')" style="background:#0e0f15;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:20px 22px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:14px;transition:border-color .15s" onmouseover="this.style.borderColor='rgba(255,255,255,.2)'" onmouseout="this.style.borderColor='rgba(255,255,255,.08)'">
           <div style="width:44px;height:44px;border-radius:13px;background:rgba(167,139,250,.08);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">⚙️</div>
           <div style="flex:1">
-            <div style="font-weight:700;font-size:15px;margin-bottom:3px;letter-spacing:-.01em">Manager Login</div>
-            <div style="font-size:12px;color:rgba(238,240,248,.38);line-height:1.5">Enter via your business dashboard link</div>
+            <div style="font-weight:700;font-size:15px;margin-bottom:2px">Manager</div>
+            <div style="font-size:12px;color:rgba(238,240,248,.38)">Enter your manager PIN</div>
           </div>
-          <div style="font-size:16px;color:rgba(238,240,248,.3)">›</div>
+          <div style="font-size:18px;color:rgba(238,240,248,.25)">›</div>
         </div>
       </div>
 
-      <div style="font-size:12px;color:rgba(238,240,248,.22);font-weight:500;max-width:280px;line-height:1.6">
-        Your dashboard link is at<br><span style="color:rgba(238,240,248,.4)">tapplus.link/your-business/dashboard</span>
-      </div>
-
-      <!-- Hidden admin button — bottom left, subtle -->
-      <button onclick="showSuperAdminPin()" style="position:fixed;bottom:16px;left:16px;background:none;border:none;cursor:pointer;padding:8px;border-radius:8px;color:rgba(238,240,248,.14);font-size:11px;font-weight:700;letter-spacing:.06em;font-family:inherit;transition:color .2s" onmouseover="this.style.color='rgba(238,240,248,.4)'" onmouseout="this.style.color='rgba(238,240,248,.14)'">Admin</button>
+      <button onclick="showSuperAdminPin()" style="position:fixed;bottom:16px;left:16px;background:none;border:none;cursor:pointer;padding:8px;color:rgba(238,240,248,.1);font-size:11px;font-weight:700;letter-spacing:.06em;font-family:inherit;transition:color .2s" onmouseover="this.style.color='rgba(238,240,248,.4)'" onmouseout="this.style.color='rgba(238,240,248,.1)'">Admin</button>
     </div>`;
+
+  window._goToPIN = function(role) {
+    renderLoginPIN(app, biz, role);
+  };
+}
+
+function renderLoginPIN(app, biz, role) {
+  const bc = biz.brand?.brandColor || "#00e5a0";
+  const isManager = role === "manager";
+  const title = isManager ? "Manager PIN" : "Employee PIN";
+  const sub   = isManager ? biz.name : biz.name;
+  const color = isManager ? "#a78bfa" : bc;
+
+  app.innerHTML = `<div id="login-pin-wrap" style="min-height:100vh;display:flex;flex-direction:column;position:relative">
+    <button onclick="renderRoleSelect($('app'),getBiz('${biz.slug}'))" style="position:absolute;top:20px;left:20px;background:none;border:none;color:rgba(238,240,248,.4);font-size:22px;cursor:pointer;z-index:10">←</button>
+  </div>`;
+
+  setTimeout(() => {
+    renderPinPad("login-pin-wrap", title, sub, "", color, v => {
+      if (isManager) {
+        if (v === biz.mgrPin) {
+          sessionStorage.setItem("biz_auth_" + biz.slug, "manager");
+          app.innerHTML = "<div id='biz-dash' style='min-height:100vh;display:flex;flex-direction:column'></div>";
+          setTimeout(() => renderManagerDash($("biz-dash"), biz), 0);
+          return true;
+        }
+        return false;
+      } else {
+        const s = biz.staff.find(x => x.passcode === v && x.active);
+        if (s) {
+          sessionStorage.setItem("biz_auth_" + biz.slug, "staff:" + s.id);
+          app.innerHTML = "<div id='biz-dash' style='min-height:100vh;display:flex;flex-direction:column'></div>";
+          setTimeout(() => renderStaffDash($("biz-dash"), biz, s), 0);
+          return true;
+        }
+        return false;
+      }
+    }, () => renderRoleSelect(app, biz));
+  }, 0);
 }
 
 function showSuperAdminPin() {
@@ -551,25 +635,8 @@ function renderBizDash(app, biz) {
   const auth = sessionStorage.getItem("biz_auth_"+biz.slug)||"";
 
   if (!auth) {
-    app.innerHTML = "<div id='biz-pin' style='min-height:100vh;display:flex;flex-direction:column'></div>";
-    setTimeout(()=>{
-      renderPinPad("biz-pin","Welcome to "+biz.name,"Enter your PIN","",biz.brand?.brandColor||"#00e5a0",v=>{
-        if (v===biz.mgrPin) {
-          sessionStorage.setItem("biz_auth_"+biz.slug,"manager");
-          app.innerHTML="<div id='biz-dash' style='min-height:100vh;display:flex;flex-direction:column'></div>";
-          setTimeout(()=>renderManagerDash($("biz-dash"),biz),0);
-          return true;
-        }
-        const s=biz.staff.find(x=>x.passcode===v&&x.active);
-        if (s) {
-          sessionStorage.setItem("biz_auth_"+biz.slug,"staff:"+s.id);
-          app.innerHTML="<div id='biz-dash' style='min-height:100vh;display:flex;flex-direction:column'></div>";
-          setTimeout(()=>renderStaffDash($("biz-dash"),biz,s),0);
-          return true;
-        }
-        return false;
-      },()=>window.location.href="/");
-    },0);
+    // Use the same clean role-select flow
+    renderRoleSelect(app, biz);
     return;
   }
 
@@ -580,7 +647,7 @@ function renderBizDash(app, biz) {
     if (auth.startsWith("staff:")) {
       const sid=auth.slice(6), s=biz.staff.find(x=>x.id===sid);
       if (s) renderStaffDash(el,biz,s);
-      else { sessionStorage.removeItem("biz_auth_"+biz.slug); renderBizDash(app,biz); }
+      else { sessionStorage.removeItem("biz_auth_"+biz.slug); renderRoleSelect(app,biz); }
     }
   },0);
 }
