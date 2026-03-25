@@ -128,6 +128,58 @@ async function fbWrite(col, docId, data) {
 
 async function saveTap(tap) { await fbWrite("taps", tap.id, tap); }
 
+// Query taps from Firestore by bizSlug (+ optional staffId filter)
+async function fbQueryTaps(bizSlug, staffId) {
+  const cfg = getFbCfg();
+  if (!cfg) return null; // null = Firebase not configured
+
+  try {
+    const url = "https://firestore.googleapis.com/v1/projects/"+cfg.projectId+"/databases/(default)/documents:runQuery";
+    const filters = [{ fieldFilter:{ field:{fieldPath:"bizSlug"}, op:"EQUAL", value:{stringValue:bizSlug} } }];
+    if (staffId) filters.push({ fieldFilter:{ field:{fieldPath:"staffId"}, op:"EQUAL", value:{stringValue:staffId} } });
+
+    const q = { structuredQuery: {
+      from: [{collectionId:"taps"}],
+      where: filters.length===1 ? filters[0] : {compositeFilter:{op:"AND",filters}},
+      orderBy: [{field:{fieldPath:"ts"},direction:"DESCENDING"}],
+      limit: 500
+    }};
+
+    const r = await fetch(url, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(q)});
+    const data = await r.json();
+    if (!Array.isArray(data)) return [];
+
+    return data.filter(x=>x.document).map(x=>{
+      const f = x.document.fields||{};
+      const out = {};
+      Object.keys(f).forEach(k=>{
+        const v=f[k];
+        if      (v.stringValue  !== undefined) out[k]=v.stringValue;
+        else if (v.integerValue !== undefined) out[k]=parseInt(v.integerValue);
+        else if (v.doubleValue  !== undefined) out[k]=parseFloat(v.doubleValue);
+        else if (v.booleanValue !== undefined) out[k]=v.booleanValue;
+        else if (v.nullValue    !== undefined) out[k]=null;
+        else out[k]=v;
+      });
+      return out;
+    }).filter(t=>t.status!=="tapped"||t.rating!=null); // only count rated taps for stats
+  } catch(e) { console.warn("Firebase query error:",e); return []; }
+}
+
+// Cache per session so we don't re-fetch on every tab switch
+const _tapCache = {};
+async function getTaps(bizSlug, staffId) {
+  const key = bizSlug + (staffId||"");
+  if (_tapCache[key]) return _tapCache[key];
+  const result = await fbQueryTaps(bizSlug, staffId);
+  if (result !== null) _tapCache[key] = result;
+  return result || getDemoTaps(); // fallback to demo if Firebase not set up
+}
+
+// Invalidate cache when new tap saved
+const _origSaveTap = saveTap;
+// (cache cleared by reloading dashboard)
+
 // ─── GROQ AI ───────────────────────────────
 let _aiCache = {};
 let _aiArgs  = {};
@@ -818,17 +870,18 @@ function renderBizDash(app, biz) {
 // ═══════════════════════════════════════════
 // DEMO DATA + STATS
 // ═══════════════════════════════════════════
+// Fallback demo data — only used when Firebase is not configured
 function getDemoTaps() {
   const t=Date.now(), H=3600000;
   return [
-    {ts:t-H*1,  rating:5,platform:"google",review:true, feedback:""},
-    {ts:t-H*3,  rating:4,platform:"yelp",  review:true, feedback:""},
-    {ts:t-H*6,  rating:5,platform:null,    review:false,feedback:""},
-    {ts:t-H*25, rating:3,platform:null,    review:false,feedback:"Food was a bit cold"},
-    {ts:t-H*26, rating:5,platform:"google",review:true, feedback:""},
-    {ts:t-H*50, rating:4,platform:"google",review:true, feedback:""},
-    {ts:t-H*73, rating:2,platform:null,    review:false,feedback:"Felt rushed, order wrong"},
-    {ts:t-H*98, rating:5,platform:"google",review:true, feedback:""}
+    {ts:t-H*1,  rating:5,platform:"google",review:true, feedback:"",status:"rated"},
+    {ts:t-H*3,  rating:4,platform:"yelp",  review:true, feedback:"",status:"rated"},
+    {ts:t-H*6,  rating:5,platform:null,    review:false,feedback:"",status:"rated"},
+    {ts:t-H*25, rating:3,platform:null,    review:false,feedback:"Food was a bit cold",status:"rated"},
+    {ts:t-H*26, rating:5,platform:"google",review:true, feedback:"",status:"rated"},
+    {ts:t-H*50, rating:4,platform:"google",review:true, feedback:"",status:"rated"},
+    {ts:t-H*73, rating:2,platform:null,    review:false,feedback:"Felt rushed, order wrong",status:"rated"},
+    {ts:t-H*98, rating:5,platform:"google",review:true, feedback:"",status:"rated"}
   ];
 }
 
@@ -861,12 +914,27 @@ function renderStaffDash(el, biz, s) {
     </div>
     <div class='dash-body' id='sbody'></div>`;
 
-  const taps=getDemoTaps(), st=calcStats(taps);
+  // Show loading state, fetch real data
+  const sbody=$("sbody");
+  // taps will be loaded async per tab — use closure
+  let _staffTaps = null;
+  async function loadStaffTaps() {
+    if (_staffTaps) return _staffTaps;
+    const sid = staffUrlSlug(staffParts(s));
+    _staffTaps = await getTaps(biz.slug, sid);
+    if (!_staffTaps || _staffTaps.length===0) _staffTaps = await getTaps(biz.slug, s.id);
+    return _staffTaps;
+  }
 
-  window._sTab=function(tab,btn) {
+  window._sTab=async function(tab,btn) {
     document.querySelectorAll("#stabs .dash-tab").forEach(b=>b.classList.remove("active"));
     btn.classList.add("active");
     const body=$("sbody"); if(!body) return;
+
+    // Show spinner while loading
+    body.innerHTML="<div class='ai-loading' style='padding:30px 0'><div class='ai-spinner'></div>Loading…</div>";
+    const taps = await loadStaffTaps();
+    const st   = calcStats(taps);
 
     if (tab==="coaching") {
       const p=`Coach ${staffParts(s).firstName||s.name} directly. Stats: ${st.count} taps, ${st.reviews} reviews, ${st.avgStr}★, ${st.ctr}% CTR, score ${st.score}. 3 coaching tips: genuine compliment, one improvement, motivating close. Under 200 words.`;
@@ -876,7 +944,7 @@ function renderStaffDash(el, biz, s) {
     else if (tab==="feedback") {
       const fb=st.negFb;
       body.innerHTML=`<div class='ai-card'><div class='ai-card-head'><div class='ai-card-ico'>💭</div><div><div class='ai-card-title'>Customer Feedback</div><div class='ai-card-sub'>${fb.length} entries</div></div></div><div id='ai-fb'></div></div>`+
-        (fb.length ? fb.map(t=>`<div class='plain-card'><div style='font-size:12px;margin-bottom:4px'>${"⭐".repeat(t.rating)}</div><div style='font-size:13px;color:rgba(238,240,248,.65);font-style:italic'>"${esc(t.feedback)}"</div></div>`).join("") : "<div style='color:#00e5a0;font-size:13px;font-weight:500;padding:10px 0'>🎉 No negative feedback yet!</div>");
+        (fb.length ? fb.map(t=>`<div class='plain-card'><div style='font-size:12px;margin-bottom:4px'>${"⭐".repeat(t.rating||0)}</div><div style='font-size:13px;color:rgba(238,240,248,.65);font-style:italic'>"${esc(t.feedback)}"</div></div>`).join("") : "<div style='color:#00e5a0;font-size:13px;font-weight:500;padding:10px 0'>🎉 No negative feedback yet!</div>");
       if (fb.length) renderAIBlock("ai-fb","Analyze: "+fb.map(t=>t.rating+"★: \""+t.feedback+"\"").join("; ")+". Main theme, one action, positive reframe. Under 100 words.","ss_"+s.id,"Analyzing…");
     }
     else if (tab==="goals") {
@@ -886,7 +954,7 @@ function renderStaffDash(el, biz, s) {
         (!tG.length&&!sG.length?"<div style='text-align:center;padding:40px 20px;color:rgba(238,240,248,.38);font-size:13px;font-weight:500'>🎯<br><br>No goals set yet.</div>":"");
     }
     else {
-      body.innerHTML=`<div class='stat-grid'>${[[st.count,"Taps",s.color],[st.reviews,"Reviews","#ffd166"],[st.avgStr,"Avg ★","#ff6b35"],[st.ctr+"%","CTR","#7c6aff"],[st.weekTaps,"This Week","#00e5a0"],[st.score,"Score","#ffd166"]].map(([v,l,c])=>`<div class='stat-box'><div class='stat-val' style='color:${c}'>${v}</div><div class='stat-lbl'>${l}</div></div>`).join("")}</div><div class='sec-lbl'>Recent Taps</div>`+taps.slice(0,6).map(t=>`<div style='display:flex;align-items:flex-start;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06);gap:9px'><div style='width:6px;height:6px;border-radius:50%;background:${t.rating<=3?"#ff4455":"#00e5a0"};flex-shrink:0;margin-top:4px'></div><div style='flex:1'><div style='font-size:12px;font-weight:600'>${"⭐".repeat(t.rating)}${t.review?"<span style='font-size:10px;background:rgba(0,229,160,.1);color:#00e5a0;border-radius:5px;padding:1px 6px;margin-left:5px'>REVIEW</span>":""}</div><div style='font-size:11px;color:rgba(238,240,248,.38);margin-top:2px;font-weight:500'>${fmt(t.ts)}</div></div></div>`).join("");
+      body.innerHTML=`<div class='stat-grid'>${[[st.count,"Taps",s.color],[st.reviews,"Reviews","#ffd166"],[st.avgStr,"Avg ★","#ff6b35"],[st.ctr+"%","CTR","#7c6aff"],[st.weekTaps,"This Week","#00e5a0"],[st.score,"Score","#ffd166"]].map(([v,l,c])=>`<div class='stat-box'><div class='stat-val' style='color:${c}'>${v}</div><div class='stat-lbl'>${l}</div></div>`).join("")}</div><div class='sec-lbl'>Recent Taps</div>`+taps.slice(0,6).map(t=>`<div style='display:flex;align-items:flex-start;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06);gap:9px'><div style='width:6px;height:6px;border-radius:50%;background:${(t.rating||0)<=3?"#ff4455":"#00e5a0"};flex-shrink:0;margin-top:4px'></div><div style='flex:1'><div style='font-size:12px;font-weight:600'>${"⭐".repeat(t.rating||0)}${t.review?"<span style='font-size:10px;background:rgba(0,229,160,.1);color:#00e5a0;border-radius:5px;padding:1px 6px;margin-left:5px'>REVIEW</span>":""}</div><div style='font-size:11px;color:rgba(238,240,248,.38);margin-top:2px;font-weight:500'>${fmt(t.ts)}</div></div></div>`).join("");
     }
   };
   _sTab("coaching", el.querySelector(".dash-tab"));
@@ -904,10 +972,25 @@ function goalRowRO(g, isTeam) {
 // BUSINESS ADMIN DASHBOARD
 // Full access: all manager tabs + Settings
 // ═══════════════════════════════════════════
-function renderBizAdminDash(el, biz) {
+async function renderBizAdminDash(el, biz) {
   const active = biz.staff.filter(s=>s.active);
-  const sd     = active.map(s=>{const st=calcStats(getDemoTaps());return `${s.name}: ${st.count} taps, ${st.reviews} reviews, ${st.avgStr}★, score ${st.score}`;}).join("\n");
-  const allFb  = active.flatMap(s=>calcStats(getDemoTaps()).negFb.map(t=>`${s.name}(${t.rating}★): "${t.feedback}"`)).join("\n");
+
+  el.innerHTML="<div style='display:flex;align-items:center;justify-content:center;min-height:60vh'><div class='ai-loading'><div class='ai-spinner'></div>Loading dashboard…</div></div>";
+  await new Promise(r=>setTimeout(r,0));
+
+  const tapsByStaff = {};
+  await Promise.all(active.map(async s => {
+    const sid = staffUrlSlug(staffParts(s));
+    tapsByStaff[s.id] = await getTaps(biz.slug, sid);
+  }));
+  await Promise.all(active.map(async s => {
+    if (!tapsByStaff[s.id] || tapsByStaff[s.id].length===0)
+      tapsByStaff[s.id] = await getTaps(biz.slug, s.id);
+  }));
+  const getStaffTaps = s => tapsByStaff[s.id] || [];
+  window.tapsByStaff = tapsByStaff;
+  const sd    = active.map(s=>{const st=calcStats(getStaffTaps(s));return `${staffDisplayName(staffParts(s))}: ${st.count} taps, ${st.reviews} reviews, ${st.avgStr}★, score ${st.score}`;}).join("\n");
+  const allFb = active.flatMap(s=>calcStats(getStaffTaps(s)).negFb.map(t=>`${staffDisplayName(staffParts(s))}(${t.rating}★): "${t.feedback}"`)).join("\n");
 
   el.innerHTML=`
     <div class='dash-header'>
@@ -934,18 +1017,19 @@ function renderBizAdminDash(el, biz) {
     btn.classList.add("active");
     const body=$("babody"); if(!body) return;
     if      (tab==="ai")        renderAITab(body,active,sd,allFb);
-    else if (tab==="team")      renderTeamTab(body,active);
+    else if (tab==="team")      renderTeamTab(body,active,getStaffTaps);
     else if (tab==="staff")     renderStaffMgmt(body,biz);
     else if (tab==="links")     renderLinksTab(body,biz);
     else if (tab==="goals")     renderGoalsTab(body,biz);
     else if (tab==="branding")  renderBrandingTab(body,biz);
-    else if (tab==="estimator") renderEstimatorTab(body,active);
-    else if (tab==="settings")  renderBizAdminSettings(body,biz);
+    else if (tab==="estimator") renderEstimatorTab(body,active,getStaffTaps);
+    else if (tab==="settings")  renderBizAdminSettings(body,biz,getStaffTaps);
   };
   _baTab("ai", el.querySelector(".dash-tab"));
 }
 
-function renderBizAdminSettings(body, biz) {
+function renderBizAdminSettings(body, biz, getStaffTaps) {
+  if (!getStaffTaps) getStaffTaps = () => getDemoTaps();
   const bc = biz.brand?.brandColor || "#00e5a0";
   body.innerHTML=`
     <div class='plain-card' style='margin-bottom:12px'>
@@ -970,7 +1054,7 @@ function renderBizAdminSettings(body, biz) {
       <div style='font-weight:700;font-size:13px;margin-bottom:10px'>📋 Tap Analytics</div>
       <div style='display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px'>
         ${(()=>{
-          const all = active.flatMap(()=>getDemoTaps());
+          const all = active.flatMap(s=>getStaffTaps(s));
           const revs = all.filter(t=>t.review).length;
           const pos  = all.filter(t=>t.rating>=4).length;
           const avg  = all.length?(all.reduce((a,t)=>a+t.rating,0)/all.length).toFixed(1):"—";
@@ -985,7 +1069,7 @@ function renderBizAdminSettings(body, biz) {
       </div>
       <div class='sec-lbl' style='margin-top:8px'>Per Staff</div>
       ${active.map(s=>{
-        const st=calcStats(getDemoTaps());
+        const st=calcStats(getStaffTaps(s));
         const pct=st.count>0?Math.round((st.reviews/st.count)*100):0;
         return `<div style='display:flex;align-items:center;gap:10px;margin-bottom:8px'>
           <div style='width:32px;height:32px;border-radius:50%;background:${s.color}22;color:${s.color};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;flex-shrink:0'>${staffIni(staffParts(s))}</div>
@@ -1016,10 +1100,31 @@ function renderBizAdminSettings(body, biz) {
   };
 }
 
-function renderManagerDash(el, biz) {
+async function renderManagerDash(el, biz) {
   const active = biz.staff.filter(s=>s.active);
-  const sd     = active.map(s=>{const st=calcStats(getDemoTaps());return `${s.name}: ${st.count} taps, ${st.reviews} reviews, ${st.avgStr}★, score ${st.score}`;}).join("\n");
-  const allFb  = active.flatMap(s=>calcStats(getDemoTaps()).negFb.map(t=>`${s.name}(${t.rating}★): "${t.feedback}"`)).join("\n");
+
+  // Load real tap data for all staff from Firebase (or demo fallback)
+  const tapsByStaff = {};
+  await Promise.all(active.map(async s => {
+    const sid = staffUrlSlug(staffParts(s));
+    tapsByStaff[s.id] = await getTaps(biz.slug, sid);
+  }));
+  // Also load taps with old-style IDs for backwards compat
+  await Promise.all(active.map(async s => {
+    if (!tapsByStaff[s.id] || tapsByStaff[s.id].length===0) {
+      tapsByStaff[s.id] = await getTaps(biz.slug, s.id);
+    }
+  }));
+
+  const getStaffTaps = s => tapsByStaff[s.id] || [];
+  window.tapsByStaff = tapsByStaff; // expose for _cStaff
+  const sd    = active.map(s=>{const st=calcStats(getStaffTaps(s));return `${staffDisplayName(staffParts(s))}: ${st.count} taps, ${st.reviews} reviews, ${st.avgStr}★, score ${st.score}`;}).join("\n");
+  const allFb = active.flatMap(s=>calcStats(getStaffTaps(s)).negFb.map(t=>`${staffDisplayName(staffParts(s))}(${t.rating}★): "${t.feedback}"`)).join("\n");
+
+  // Show loading while fetching Firebase data
+  el.innerHTML="<div style='display:flex;align-items:center;justify-content:center;min-height:60vh'><div class='ai-loading'><div class='ai-spinner'></div>Loading dashboard…</div></div>";
+  // Small delay to let the spinner render before async work
+  await new Promise(r=>setTimeout(r,0));
 
   el.innerHTML=`
     <div class='dash-header'>
@@ -1032,7 +1137,6 @@ function renderManagerDash(el, biz) {
       <button class='dash-tab' onclick='_mTab("staff",this)'>Staff</button>
       <button class='dash-tab' onclick='_mTab("links",this)'>Links</button>
       <button class='dash-tab' onclick='_mTab("goals",this)'>Goals</button>
-      <button class='dash-tab' onclick='_mTab("branding",this)'>Branding</button>
       <button class='dash-tab ai' onclick='_mTab("estimator",this)'><span class='ai-mini-dot'></span> Estimator</button>
     </div>
     <div class='dash-body' id='mbody'></div>`;
@@ -1088,8 +1192,9 @@ window._cStaff=function(sid,pill) {
   const parts=window.location.pathname.split("/").filter(Boolean);
   const biz=getBiz(parts[0]); if(!biz) return;
   const s=biz.staff.find(x=>x.id===sid); if(!s) return;
-  const st=calcStats(getDemoTaps());
-  const ctx=biz.staff.filter(x=>x.active).map(x=>`${x.name}: score ${calcStats(getDemoTaps()).score}`).join(", ");
+  const allTaps=tapsByStaff&&tapsByStaff[s.id]?tapsByStaff[s.id]:getDemoTaps();
+  const st=calcStats(allTaps);
+  const ctx=biz.staff.filter(x=>x.active).map(x=>`${staffDisplayName(staffParts(x))}: score ${calcStats(tapsByStaff&&tapsByStaff[x.id]?tapsByStaff[x.id]:getDemoTaps()).score}`).join(", ");
   const fb=st.negFb.map(t=>`"${t.feedback}"(${t.rating}★)`).join("; ")||"none";
   const p=`Manager coaching for ${s.name}. Stats: ${st.count} taps, ${st.reviews} reviews, ${st.avgStr}★, ${st.ctr}% CTR, score ${st.score}. Team: ${ctx}. Feedback: ${fb}. What they do well, biggest improvement, coaching starter, suggested goal. Under 200 words.`;
   const cc=$("ccard"); if(!cc) return;
@@ -1100,20 +1205,22 @@ window._cStaff=function(sid,pill) {
 // ─── TEAM TAB ──────────────────────────────
 let _teamSub="leaderboard", _chartMode="bar";
 
-function renderTeamTab(body, active) {
+function renderTeamTab(body, active, getStaffTaps) {
+  if (!getStaffTaps) getStaffTaps = () => getDemoTaps();
   body.innerHTML=`<div id='tsubs' style='display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap'>${["leaderboard","analytics"].map((s,i)=>`<button data-ts='${s}' onclick='_tSub(this.dataset.ts)' style='background:${i===0?"#00e5a0":"#15171f"};color:${i===0?"#07080c":"rgba(238,240,248,.5)"};border:1px solid ${i===0?"#00e5a0":"rgba(255,255,255,.08)"};border-radius:9px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit'>${i===0?"🏆 Leaderboard":"📊 Analytics"}</button>`).join("")}</div><div id='tsub-body'></div>`;
   window._tSub=function(sub) {
     _teamSub=sub;
     document.querySelectorAll("#tsubs button").forEach(b=>{const a=b.dataset.ts===sub;b.style.background=a?"#00e5a0":"#15171f";b.style.color=a?"#07080c":"rgba(238,240,248,.5)";b.style.borderColor=a?"#00e5a0":"rgba(255,255,255,.08)";});
     const el=$("tsub-body"); if(!el) return;
-    if (sub==="leaderboard") renderLeaderboard(el,active);
-    else renderAnalytics(el,active);
+    if (sub==="leaderboard") renderLeaderboard(el,active,getStaffTaps);
+    else renderAnalytics(el,active,getStaffTaps);
   };
   _tSub(_teamSub);
 }
 
-function renderLeaderboard(el, active) {
-  const rows=active.map(s=>({s,st:calcStats(getDemoTaps())})).sort((a,b)=>b.st.score-a.st.score);
+function renderLeaderboard(el, active, getStaffTaps) {
+  if (!getStaffTaps) getStaffTaps = () => getDemoTaps();
+  const rows=active.map(s=>({s,st:calcStats(getStaffTaps(s))})).sort((a,b)=>b.st.score-a.st.score);
   const maxScore=Math.max(...rows.map(r=>r.st.score),1);
   const wkTop=[...rows].sort((a,b)=>b.st.weekTaps-a.st.weekTaps)[0];
   const pl=pct=>{if(pct>=.9)return{e:"🔥",l:"On Fire",c:"#ff6b35"};if(pct>=.75)return{e:"💪",l:"Strong",c:"#00e5a0"};if(pct>=.55)return{e:"✅",l:"Good",c:"#7c6aff"};if(pct>=.35)return{e:"📈",l:"Building",c:"#ffd166"};return{e:"💤",l:"Needs Push",c:"#ff4455"};};
@@ -1122,18 +1229,19 @@ function renderLeaderboard(el, active) {
     `<div style='margin-top:10px;font-size:11px;color:rgba(238,240,248,.28);font-weight:500'>Score = Taps×10 + Reviews×15 + 5★×5</div>`;
 }
 
-function renderAnalytics(el, active) {
-  const all=active.flatMap(()=>getDemoTaps());
+function renderAnalytics(el, active, getStaffTaps) {
+  if (!getStaffTaps) getStaffTaps = () => getDemoTaps();
+  const all=active.flatMap(s=>getStaffTaps(s));
   const tot=all.length,revs=all.filter(t=>t.review).length;
   const avg=all.length?(all.reduce((a,t)=>a+t.rating,0)/all.length).toFixed(1):"—";
   const pos=all.filter(t=>t.rating>=4).length,neg=all.filter(t=>t.rating<=3).length;
   const ctr=pos>0?Math.round((revs/pos)*100):0;
   const gT=all.filter(t=>t.platform==="google").length,yT=all.filter(t=>t.platform==="yelp").length;
-  const mx=Math.max(...active.map(()=>getDemoTaps().length),1);
+  const mx=Math.max(...active.map(s=>getStaffTaps(s).length),1);
   const isBar=_chartMode==="bar";
   const bs=a=>`background:${a?"#00e5a0":"#15171f"};color:${a?"#07080c":"rgba(238,240,248,.5)"};border:1px solid ${a?"#00e5a0":"rgba(255,255,255,.08)"};border-radius:9px;padding:5px 11px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit`;
   const cs="background:#0e0f15;border:1px solid rgba(255,255,255,.06);border-radius:13px;padding:15px;margin-bottom:9px";
-  el.innerHTML=`<div style='display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px'><button data-cm='bar' onclick='_setChart(this.dataset.cm)' style='${bs(isBar)}'>▬ Bar</button><button data-cm='donut' onclick='_setChart(this.dataset.cm)' style='${bs(!isBar)}'>◉ Donut</button></div><div style='display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:9px'>${[[tot,"Total Taps","#00e5a0"],[revs,"Reviews","#ffd166"],[avg+"⭐","Avg Rating","#ff6b35"],[ctr+"%","CTR","#7c6aff"],[pos,"Positive","#00e5a0"],[neg,"Negative","#ff4455"]].map(([v,l,c])=>`<div style='${cs}'><div style='font-weight:900;font-size:26px;line-height:1;margin-bottom:4px;color:${c};letter-spacing:-.03em'>${v}</div><div style='font-size:11px;color:rgba(238,240,248,.38);font-weight:700'>${l}</div></div>`).join("")}</div><div style='${cs}'><div class='sec-lbl'>Platform</div>${buildPlatChart(gT,yT)}</div><div style='${cs}'><div class='sec-lbl'>Taps Per Staff</div>${buildStaffChart(active,mx)}</div>`;
+  el.innerHTML=`<div style='display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px'><button data-cm='bar' onclick='_setChart(this.dataset.cm)' style='${bs(isBar)}'>▬ Bar</button><button data-cm='donut' onclick='_setChart(this.dataset.cm)' style='${bs(!isBar)}'>◉ Donut</button></div><div style='display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:9px'>${[[tot,"Total Taps","#00e5a0"],[revs,"Reviews","#ffd166"],[avg+"⭐","Avg Rating","#ff6b35"],[ctr+"%","CTR","#7c6aff"],[pos,"Positive","#00e5a0"],[neg,"Negative","#ff4455"]].map(([v,l,c])=>`<div style='${cs}'><div style='font-weight:900;font-size:26px;line-height:1;margin-bottom:4px;color:${c};letter-spacing:-.03em'>${v}</div><div style='font-size:11px;color:rgba(238,240,248,.38);font-weight:700'>${l}</div></div>`).join("")}</div><div style='${cs}'><div class='sec-lbl'>Platform</div>${buildPlatChart(gT,yT)}</div><div style='${cs}'><div class='sec-lbl'>Taps Per Staff</div>${buildStaffChart(active,mx,getStaffTaps)}</div>`;
   window._setChart=c=>{_chartMode=c;renderAnalytics(el,active);};
 }
 
@@ -1146,13 +1254,14 @@ function buildPlatChart(gT,yT) {
   return segs.map(s=>`<div class='bar-row'><div class='bar-nm'>${s.l}</div><div class='bar-track'><div class='bar-fill' style='width:${gT+yT?Math.round(s.n/(gT+yT)*100):0}%;background:${s.c}'></div></div><div class='bar-v' style='color:${s.c}'>${s.n}</div></div>`).join("");
 }
 
-function buildStaffChart(active, mx) {
+function buildStaffChart(active, mx, getStaffTaps) {
+  if (!getStaffTaps) getStaffTaps = () => getDemoTaps();
   if (_chartMode==="donut") {
-    const tot=active.reduce((a)=>a+getDemoTaps().length,0)||1;
-    const segs=active.map(s=>({pct:getDemoTaps().length/tot,c:s.color}));
-    return `<div style='display:flex;align-items:center;gap:16px'>${buildDonut(segs,80)}<div>${active.map(s=>{const n=getDemoTaps().length;return`<div style='display:flex;align-items:center;gap:7px;margin-bottom:7px'><div style='width:10px;height:10px;border-radius:50%;background:${s.color};flex-shrink:0'></div><div style='font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>${esc(staffParts(s).firstName||s.name)}</div><div style='font-size:12px;font-weight:800;color:${s.color}'>${n}</div></div>`}).join("")}</div></div>`;
+    const tot=active.reduce((a,s)=>a+getStaffTaps(s).length,0)||1;
+    const segs=active.map(s=>({pct:getStaffTaps(s).length/tot,c:s.color}));
+    return `<div style='display:flex;align-items:center;gap:16px'>${buildDonut(segs,80)}<div>${active.map(s=>{const n=getStaffTaps(s).length;return`<div style='display:flex;align-items:center;gap:7px;margin-bottom:7px'><div style='width:10px;height:10px;border-radius:50%;background:${s.color};flex-shrink:0'></div><div style='font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>${esc(staffParts(s).firstName||s.name)}</div><div style='font-size:12px;font-weight:800;color:${s.color}'>${n}</div></div>`}).join("")}</div></div>`;
   }
-  return active.map(s=>{const n=getDemoTaps().length;return`<div class='bar-row'><div class='bar-nm'>${esc(staffParts(s).firstName||s.name)}</div><div class='bar-track'><div class='bar-fill' style='width:${Math.round(n/mx*100)}%;background:${s.color}'></div></div><div class='bar-v' style='color:${s.color}'>${n}</div></div>`;}).join("");
+  return active.map(s=>{const n=getStaffTaps(s).length;return`<div class='bar-row'><div class='bar-nm'>${esc(staffParts(s).firstName||s.name)}</div><div class='bar-track'><div class='bar-fill' style='width:${Math.round(n/mx*100)}%;background:${s.color}'></div></div><div class='bar-v' style='color:${s.color}'>${n}</div></div>`;}).join("");
 }
 
 function buildDonut(segs, size) {
@@ -1360,7 +1469,8 @@ function renderBrandingTab(body, biz) {
 }
 
 // ─── ESTIMATOR ─────────────────────────────
-function renderEstimatorTab(body, active) {
+function renderEstimatorTab(body, active, getStaffTaps) {
+  if (!getStaffTaps) getStaffTaps = () => getDemoTaps();
   body.innerHTML=`<div class='ai-card'><div class='ai-card-head'><div class='ai-card-ico'>📈</div><div><div class='ai-card-title'>Platform Rating Estimator</div><div class='ai-card-sub'>How many 5★ reviews to hit your target</div></div></div><div class='field-lbl' style='margin-top:4px'>Platform</div><select class='sel' id='e-plat' style='margin-bottom:10px'><option value='google'>Google</option><option value='yelp'>Yelp</option><option value='tripadvisor'>Tripadvisor</option></select><div class='field-lbl'>Current Review Count</div><input class='inp' id='e-count' type='number' value='71' style='margin-bottom:8px'/><div class='field-lbl'>Current Rating</div><input class='inp' id='e-cur' type='number' step='0.1' value='4.2' style='margin-bottom:8px'/><div class='field-lbl'>Target Rating</div><input class='inp' id='e-tgt' type='number' step='0.1' value='4.5' style='margin-bottom:12px'/><button onclick='_calcEst()' style='width:100%;padding:12px;background:linear-gradient(135deg,rgba(167,139,250,.16),rgba(129,140,248,.12));border:1px solid rgba(167,139,250,.28);color:#a78bfa;border-radius:11px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit'>✦ Calculate &amp; Predict</button><div id='e-result' style='margin-top:14px'></div></div>`;
   window._calcEst=function(){
     const c=parseInt(($("e-count")||{}).value)||0,cur=parseFloat(($("e-cur")||{}).value)||0,tgt=parseFloat(($("e-tgt")||{}).value)||0,plat=($("e-plat")||{}).value||"google";
