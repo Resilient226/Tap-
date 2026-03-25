@@ -945,4 +945,4 @@ function renderEstimatorTab(body, active) {
 // ─── INIT ──────────────────────────────────
 window.addEventListener("popstate", route);
 if (document.readyState==="loading") document.addEventListener("DOMContentLoaded", route);
-else 
+else route();
