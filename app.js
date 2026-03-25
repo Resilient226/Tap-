@@ -165,6 +165,7 @@ async function saveTap(tap) {
     const url = fbBaseUrl(cfg) + "/taps/" + tap.id + "?key=" + cfg.apiKey;
     const res = await fetch(url, {
       method:  "PATCH",
+      mode:    "cors",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify(toFsDoc(tap))
     });
@@ -202,6 +203,7 @@ async function fbQueryTaps(bizSlug, staffId) {
 
     const res  = await fetch(url, {
       method:  "POST",
+      mode:    "cors",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify(body)
     });
@@ -647,43 +649,11 @@ window.saTestFb = async function() {
   set("Step 1/3: Config loaded ✓  Project: " + cfg.projectId, "rgba(238,240,248,.5)");
   await new Promise(r => setTimeout(r, 400));
 
-  // Step 2 — try a simple GET first (no write needed, just checks connectivity + auth)
-  try {
-    const getUrl = "https://firestore.googleapis.com/v1/projects/"
-      + cfg.projectId
-      + "/databases/(default)?key=" + cfg.apiKey;
-
-    set("Step 2/3: Connecting to Firestore…", "rgba(238,240,248,.5)");
-    const probe = await fetch(getUrl);
-
-    if (!probe.ok) {
-      const e = await probe.json().catch(() => ({}));
-      const msg = e?.error?.message || ("HTTP " + probe.status);
-      if (probe.status === 400) {
-        set("❌ API Key invalid or missing. Re-paste your apiKey and save.", "#ff4455");
-      } else if (probe.status === 403) {
-        set("❌ Permission denied. Check Firestore rules are in test mode.", "#ff4455");
-      } else if (probe.status === 404) {
-        set("❌ Project ID not found: '" + cfg.projectId + "' — check for typos.", "#ff4455");
-      } else {
-        set("❌ Firestore error: " + msg, "#ff4455");
-      }
-      return;
-    }
-
-    set("Step 2/3: Connected ✓  Writing test document…", "rgba(238,240,248,.5)");
-    await new Promise(r => setTimeout(r, 300));
-
-  } catch(e) {
-    // fetch itself threw — true network issue or CORS
-    console.error("Firestore probe error:", e.name, e.message);
-    if (e.name === "TypeError" && e.message.includes("fetch")) {
-      set("❌ CORS or network block. Open browser console (F12) and check the exact error on the failed request to firestore.googleapis.com", "#ff4455");
-    } else {
-      set("❌ " + e.name + ": " + e.message, "#ff4455");
-    }
-    return;
-  }
+  // Step 2 — skip probe, go straight to write attempt
+  // The probe GET was causing "Load failed" due to Firestore database endpoint
+  // needing the database to be fully provisioned. Go straight to document write.
+  set("Step 2/3: Attempting write to Firestore…", "rgba(238,240,248,.5)");
+  await new Promise(r => setTimeout(r, 300));
 
   // Step 3 — write test document
   try {
@@ -693,7 +663,8 @@ window.saTestFb = async function() {
 
     const res = await fetch(writeUrl, {
       method:  "PATCH",
-      headers: { "Content-Type": "application/json" },
+      mode:    "cors",
+      headers: { "Content-Type": "application/json", "X-Goog-Api-Client": "tap-plus" },
       body:    JSON.stringify({ fields: {
         ping: { stringValue: "ok" },
         ts:   { integerValue: String(Date.now()) },
@@ -708,7 +679,14 @@ window.saTestFb = async function() {
       set("❌ Write failed: " + (err?.error?.message || "HTTP " + res.status), "#ff4455");
     }
   } catch(e) {
-    set("❌ Write error: " + e.message, "#ff4455");
+    console.error("Firebase write catch:", e);
+    if (e.message && e.message.includes("Load failed")) {
+      set("❌ Firestore database not found. In Firebase Console → Firestore Database → click Create Database → Start in test mode → Enable.", "#ff4455");
+    } else if (e.message && e.message.includes("Failed to fetch")) {
+      set("❌ Cannot reach Firebase. Check: 1) Firestore is created in Firebase console 2) Your internet connection", "#ff4455");
+    } else {
+      set("❌ Write error: " + e.name + ": " + e.message, "#ff4455");
+    }
   }
 };
 
