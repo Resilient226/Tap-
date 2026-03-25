@@ -256,7 +256,7 @@ function renderPlatformHome(app) {
 
       <div style="width:100%;max-width:320px">
         <div style="font-size:13px;font-weight:600;color:rgba(238,240,248,.4);margin-bottom:16px;letter-spacing:.04em;text-transform:uppercase">Enter Store Code</div>
-        <input id="store-code-inp" class="inp" placeholder="e.g. JAMES or 4821" maxlength="20"
+        <input id="store-code-inp" class="inp" placeholder="e.g. STORE CODE" maxlength="20"
           style="text-align:center;font-size:18px;font-weight:700;letter-spacing:.08em;margin-bottom:8px;text-transform:uppercase"
           oninput="this.value=this.value.toUpperCase()"
           onkeydown="if(event.key==='Enter')_submitStoreCode()"/>
