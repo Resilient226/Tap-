@@ -225,11 +225,18 @@ function route() {
   const app   = $("app"); if (!app) return;
   const parts = path.split("/").filter(Boolean);
 
-  if (!parts.length)                           { renderSuperAdmin(app); return; }
+  // / → platform home (staff/manager see this, admin button hidden bottom-left)
+  if (!parts.length) { renderPlatformHome(app); return; }
+
   const sl  = parts[0];
   const biz = getBiz(sl);
-  if (parts[1]==="dashboard")                  { biz ? renderBizDash(app,biz) : (app.innerHTML=notFound()); return; }
-  if (parts[1]==="tap" || parts.length===1)    { biz ? renderCustomerPage(app,biz,parts[1]==="tap"?parts[2]:null) : (app.innerHTML=notFound()); return; }
+
+  // /[slug]/dashboard → business staff + manager login
+  if (parts[1]==="dashboard") { biz ? renderBizDash(app,biz) : (app.innerHTML=notFound()); return; }
+
+  // /[slug]/tap/[id] or /[slug] → customer page
+  if (parts[1]==="tap" || parts.length===1) { biz ? renderCustomerPage(app,biz,parts[1]==="tap"?parts[2]:null) : (app.innerHTML=notFound()); return; }
+
   app.innerHTML = notFound();
 }
 
@@ -240,17 +247,67 @@ function notFound() {
 // ═══════════════════════════════════════════
 // SUPER ADMIN
 // ═══════════════════════════════════════════
+// ─── PLATFORM HOME (tapplus.link) ──────────
+function renderPlatformHome(app) {
+  app.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:40px 24px;text-align:center;position:relative;z-index:1">
+      <div style="font-weight:900;font-size:52px;letter-spacing:-.04em;margin-bottom:8px;background:linear-gradient(135deg,#fff 60%,rgba(255,255,255,.4));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Tap<span style="-webkit-text-fill-color:#00e5a0">+</span></div>
+      <div style="font-size:14px;color:rgba(238,240,248,.4);font-weight:500;margin-bottom:52px;letter-spacing:.02em">Smart review management</div>
+
+      <div style="width:100%;max-width:340px;display:flex;flex-direction:column;gap:12px;margin-bottom:20px">
+        <div style="background:#0e0f15;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:20px 22px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:14px" onclick="window.location.href=prompt('Enter your business dashboard URL:')">
+          <div style="width:44px;height:44px;border-radius:13px;background:rgba(0,229,160,.08);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">👤</div>
+          <div style="flex:1">
+            <div style="font-weight:700;font-size:15px;margin-bottom:3px;letter-spacing:-.01em">Staff Login</div>
+            <div style="font-size:12px;color:rgba(238,240,248,.38);line-height:1.5">Enter via your business dashboard link</div>
+          </div>
+          <div style="font-size:16px;color:rgba(238,240,248,.3)">›</div>
+        </div>
+
+        <div style="background:#0e0f15;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:20px 22px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:14px" onclick="window.location.href=prompt('Enter your business dashboard URL:')">
+          <div style="width:44px;height:44px;border-radius:13px;background:rgba(167,139,250,.08);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">⚙️</div>
+          <div style="flex:1">
+            <div style="font-weight:700;font-size:15px;margin-bottom:3px;letter-spacing:-.01em">Manager Login</div>
+            <div style="font-size:12px;color:rgba(238,240,248,.38);line-height:1.5">Enter via your business dashboard link</div>
+          </div>
+          <div style="font-size:16px;color:rgba(238,240,248,.3)">›</div>
+        </div>
+      </div>
+
+      <div style="font-size:12px;color:rgba(238,240,248,.22);font-weight:500;max-width:280px;line-height:1.6">
+        Your dashboard link is at<br><span style="color:rgba(238,240,248,.4)">tapplus.link/your-business/dashboard</span>
+      </div>
+
+      <!-- Hidden admin button — bottom left, subtle -->
+      <button onclick="showSuperAdminPin()" style="position:fixed;bottom:16px;left:16px;background:none;border:none;cursor:pointer;padding:8px;border-radius:8px;color:rgba(238,240,248,.14);font-size:11px;font-weight:700;letter-spacing:.06em;font-family:inherit;transition:color .2s" onmouseover="this.style.color='rgba(238,240,248,.4)'" onmouseout="this.style.color='rgba(238,240,248,.14)'">Admin</button>
+    </div>`;
+}
+
+function showSuperAdminPin() {
+  const app = $("app");
+  // Overlay the pin pad without leaving the home page
+  const overlay = document.createElement("div");
+  overlay.id = "sa-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:500;display:flex;align-items:center;justify-content:center";
+  overlay.innerHTML = "<div id='sa-pin-inner' style='width:100%;max-width:360px;min-height:420px;display:flex;flex-direction:column'></div>";
+  overlay.addEventListener("click", e => { if (e.target===overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+
+  setTimeout(() => {
+    renderPinPad("sa-pin-inner","Tap+ Admin","Enter your PIN","",  "#a78bfa", v => {
+      if (v===getAdminPin()) {
+        overlay.remove();
+        renderSuperAdmin(app);
+        return true;
+      }
+      return false;
+    }, () => overlay.remove());
+  }, 0);
+}
+
 function renderSuperAdmin(app) {
   app.innerHTML = "<div id='sa-root' style='min-height:100vh'></div>";
   const el = $("sa-root");
-  if (!sessionStorage.getItem("sa_auth")) {
-    el.innerHTML = "<div id='sa-pin' style='min-height:100vh;display:flex;flex-direction:column'></div>";
-    setTimeout(() => renderPinPad("sa-pin","Super Admin","Enter your PIN","Default: 0000","#a78bfa",v => {
-      if (v===getAdminPin()) { sessionStorage.setItem("sa_auth","1"); renderSAPanel(el); return true; }
-      return false;
-    }, null), 0);
-    return;
-  }
   renderSAPanel(el);
 }
 
@@ -266,7 +323,10 @@ function renderSAPanel(el) {
           <div style="font-weight:900;font-size:22px;letter-spacing:-.03em">Tap<span style="color:#00e5a0">+</span> Admin</div>
           <div style="font-size:12px;color:rgba(238,240,248,.38);margin-top:2px;font-weight:500">Super Admin Panel</div>
         </div>
-        <button onclick='sessionStorage.removeItem("sa_auth");route()' style="background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:9px;padding:7px 13px;font-size:12px;color:#ff4455;cursor:pointer;font-family:inherit;font-weight:600">Sign Out</button>
+        <div style="display:flex;gap:8px">
+          <button onclick='window.location.href="/"' style="background:#15171f;border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:7px 13px;font-size:12px;color:rgba(238,240,248,.5);cursor:pointer;font-family:inherit;font-weight:600">← Home</button>
+          <button onclick='sessionStorage.removeItem("sa_auth");window.location.href="/"' style="background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:9px;padding:7px 13px;font-size:12px;color:#ff4455;cursor:pointer;font-family:inherit;font-weight:600">Sign Out</button>
+        </div>
       </div>
 
       <div class="sec-lbl">Businesses (${bizList.length})</div>
@@ -561,7 +621,7 @@ function renderStaffDash(el, biz, s) {
   el.innerHTML=`
     <div class='dash-header'>
       <div><div class='dash-name'>${esc(s.name.split(" ")[0])}'s Dashboard</div><div class='dash-sub'>${esc(biz.name)}</div></div>
-      <button onclick='sessionStorage.removeItem("biz_auth_${biz.slug}");window.location.reload()' class='dash-exit'>← Exit</button>
+      <button onclick='sessionStorage.removeItem("biz_auth_${biz.slug}");window.location.href="/${biz.slug}/dashboard"' class='dash-exit'>← Exit</button>
     </div>
     <div class='dash-tabs' id='stabs'>
       <button class='dash-tab ai active' onclick='_sTab("coaching",this)'><span class='ai-mini-dot'></span> AI Coaching</button>
@@ -618,7 +678,7 @@ function renderManagerDash(el, biz) {
   el.innerHTML=`
     <div class='dash-header'>
       <div><div class='dash-name'>${esc(biz.name)}</div><div class='dash-sub'>Manager Dashboard · Tap+</div></div>
-      <button onclick='sessionStorage.removeItem("biz_auth_${biz.slug}");window.location.reload()' class='dash-exit'>← Exit</button>
+      <button onclick='sessionStorage.removeItem("biz_auth_${biz.slug}");window.location.href="/${biz.slug}/dashboard"' class='dash-exit'>← Exit</button>
     </div>
     <div class='dash-tabs' id='mtabs'>
       <button class='dash-tab ai active' onclick='_mTab("ai",this)'><span class='ai-mini-dot'></span> AI Insights</button>
@@ -885,4 +945,4 @@ function renderEstimatorTab(body, active) {
 // ─── INIT ──────────────────────────────────
 window.addEventListener("popstate", route);
 if (document.readyState==="loading") document.addEventListener("DOMContentLoaded", route);
-else route();
+else 
