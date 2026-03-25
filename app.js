@@ -48,15 +48,31 @@ function getBiz(sl) {
   const s = LS.get("tp_biz_"+sl, null);
   if (!s) return null;
   return {
-    name:       s.name     || "Unnamed",
-    slug:       s.slug     || sl,
-    brand:      {...DEFAULT_BRAND,  ...(s.brand     || {})},
-    links:      Array.isArray(s.links)      ? s.links      : clone(DEFAULT_LINKS),
-    staff:      Array.isArray(s.staff)      ? s.staff      : clone(DEFAULT_STAFF),
-    mgrPin:     s.mgrPin   || "1234",
-    teamGoals:  Array.isArray(s.teamGoals)  ? s.teamGoals  : [],
-    staffGoals: s.staffGoals || {}
+    name:         s.name         || "Unnamed",
+    slug:         s.slug         || sl,
+    storeCode:    s.storeCode    || sl,
+    bizAdminPin:  s.bizAdminPin  || "",
+    brand:        {...DEFAULT_BRAND, ...(s.brand     || {})},
+    links:        Array.isArray(s.links)      ? s.links      : clone(DEFAULT_LINKS),
+    staff:        Array.isArray(s.staff)      ? s.staff      : clone(DEFAULT_STAFF),
+    mgrPin:       s.mgrPin   || "1234",
+    teamGoals:    Array.isArray(s.teamGoals)  ? s.teamGoals  : [],
+    staffGoals:   s.staffGoals || {}
   };
+}
+
+// Lookup biz by store code (case-insensitive)
+function getBizByCode(code) {
+  const normalized = code.trim().toLowerCase().replace(/\s+/g,"-");
+  const list = getBizList();
+  for (const sl of list) {
+    const b = getBiz(sl);
+    if (!b) continue;
+    // Match against storeCode OR slug
+    const sc = (b.storeCode||"").toLowerCase();
+    if (sc === normalized || sl === normalized) return b;
+  }
+  return null;
 }
 
 function saveBiz(biz) {
@@ -256,7 +272,7 @@ function renderPlatformHome(app) {
 
       <div style="width:100%;max-width:320px">
         <div style="font-size:13px;font-weight:600;color:rgba(238,240,248,.4);margin-bottom:16px;letter-spacing:.04em;text-transform:uppercase">Enter Store Code</div>
-        <input id="store-code-inp" class="inp" placeholder="e.g. STORE CODE" maxlength="20"
+        <input id="store-code-inp" class="inp" placeholder="e.g. JAMES or 4821" maxlength="20"
           style="text-align:center;font-size:18px;font-weight:700;letter-spacing:.08em;margin-bottom:8px;text-transform:uppercase"
           oninput="this.value=this.value.toUpperCase()"
           onkeydown="if(event.key==='Enter')_submitStoreCode()"/>
@@ -280,7 +296,7 @@ function renderPlatformHome(app) {
       return;
     }
 
-    const biz = getBiz(code);
+    const biz = getBizByCode(code);
     if (!biz) {
       if (err) err.textContent = "Store code not found. Check with your manager.";
       // Shake the input
@@ -322,6 +338,15 @@ function renderRoleSelect(app, biz) {
           </div>
           <div style="font-size:18px;color:rgba(238,240,248,.25)">›</div>
         </div>
+
+        <div onclick="_goToPIN('bizadmin')" style="background:#0e0f15;border:1px solid rgba(255,107,53,.18);border-radius:18px;padding:20px 22px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:14px;transition:border-color .15s" onmouseover="this.style.borderColor='rgba(255,107,53,.4)'" onmouseout="this.style.borderColor='rgba(255,107,53,.18)'">
+          <div style="width:44px;height:44px;border-radius:13px;background:rgba(255,107,53,.08);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">🏢</div>
+          <div style="flex:1">
+            <div style="font-weight:700;font-size:15px;margin-bottom:2px;color:#ff6b35">Business Admin</div>
+            <div style="font-size:12px;color:rgba(238,240,248,.38)">Full access to this location</div>
+          </div>
+          <div style="font-size:18px;color:rgba(238,240,248,.25)">›</div>
+        </div>
       </div>
 
       <button onclick="showSuperAdminPin()" style="position:fixed;bottom:16px;left:16px;background:none;border:none;cursor:pointer;padding:8px;color:rgba(238,240,248,.1);font-size:11px;font-weight:700;letter-spacing:.06em;font-family:inherit;transition:color .2s" onmouseover="this.style.color='rgba(238,240,248,.4)'" onmouseout="this.style.color='rgba(238,240,248,.1)'">Admin</button>
@@ -334,18 +359,26 @@ function renderRoleSelect(app, biz) {
 
 function renderLoginPIN(app, biz, role) {
   const bc = biz.brand?.brandColor || "#00e5a0";
-  const isManager = role === "manager";
-  const title = isManager ? "Manager PIN" : "Employee PIN";
-  const sub   = isManager ? biz.name : biz.name;
-  const color = isManager ? "#a78bfa" : bc;
+  const isMgr   = role === "manager";
+  const isBizAdmin = role === "bizadmin";
+  const title = isBizAdmin ? "Business Admin PIN" : isMgr ? "Manager PIN" : "Employee PIN";
+  const color = isBizAdmin ? "#ff6b35" : isMgr ? "#a78bfa" : bc;
 
   app.innerHTML = `<div id="login-pin-wrap" style="min-height:100vh;display:flex;flex-direction:column;position:relative">
     <button onclick="renderRoleSelect($('app'),getBiz('${biz.slug}'))" style="position:absolute;top:20px;left:20px;background:none;border:none;color:rgba(238,240,248,.4);font-size:22px;cursor:pointer;z-index:10">←</button>
   </div>`;
 
   setTimeout(() => {
-    renderPinPad("login-pin-wrap", title, sub, "", color, v => {
-      if (isManager) {
+    renderPinPad("login-pin-wrap", title, biz.name, "", color, v => {
+      if (isBizAdmin) {
+        if (biz.bizAdminPin && v === biz.bizAdminPin) {
+          sessionStorage.setItem("biz_auth_" + biz.slug, "bizadmin");
+          app.innerHTML = "<div id='biz-dash' style='min-height:100vh;display:flex;flex-direction:column'></div>";
+          setTimeout(() => renderBizAdminDash($("biz-dash"), biz), 0);
+          return true;
+        }
+        return false;
+      } else if (isMgr) {
         if (v === biz.mgrPin) {
           sessionStorage.setItem("biz_auth_" + biz.slug, "manager");
           app.innerHTML = "<div id='biz-dash' style='min-height:100vh;display:flex;flex-direction:column'></div>";
@@ -424,7 +457,10 @@ function renderSAPanel(el) {
                 <div style="width:36px;height:36px;border-radius:10px;background:${bc}22;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:${bc};flex-shrink:0">${ini(b.name)}</div>
                 <div style="flex:1">
                   <div style="font-weight:700;font-size:14px">${esc(b.name)}</div>
-                  <div style="font-size:11px;color:rgba(238,240,248,.38);margin-top:2px;font-weight:500">tapplus.link/${esc(sl)} · ${b.staff.filter(s=>s.active).length} staff</div>
+                  <div style="display:flex;align-items:center;gap:8px;margin-top:3px;flex-wrap:wrap">
+                    <span style="font-size:11px;background:rgba(0,229,160,.1);color:#00e5a0;border-radius:6px;padding:2px 8px;font-weight:800;letter-spacing:.06em">${esc(b.storeCode||sl)}</span>
+                    <span style="font-size:11px;color:rgba(238,240,248,.38);font-weight:500">${b.staff.filter(s=>s.active).length} staff · tapplus.link/${esc(sl)}</span>
+                  </div>
                 </div>
                 <div style="display:flex;gap:6px">
                   <button onclick='window.open("/${sl}","_blank")' style="background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.2);border-radius:8px;padding:5px 10px;font-size:11px;color:#00e5a0;cursor:pointer;font-weight:700;font-family:inherit">👁 Page</button>
@@ -491,28 +527,97 @@ window.saDeleteBiz = function(sl) {
 };
 
 window.saAddBiz = function() {
+  const auto = genUniqueCode(null);
   showModal(`<div class='modal-head'><div class='modal-title'>Add Business</div><button class='modal-close' onclick='closeModal()'>×</button></div>
     <div style='display:flex;flex-direction:column;gap:11px'>
       <div><div class='field-lbl'>Business Name</div><input class='inp' id='nb-name' placeholder="e.g. Noah's Bagels"/></div>
       <div><div class='field-lbl'>URL Slug</div><input class='inp' id='nb-slug' placeholder='noahs-bagels'/></div>
-      <div><div class='field-lbl'>Manager PIN (4 digits)</div><input class='inp' id='nb-mpin' type='tel' maxlength='4' placeholder='e.g. 5678'/></div>
+      <div style='display:grid;grid-template-columns:1fr 1fr;gap:8px'>
+        <div>
+          <div class='field-lbl'>Store Code</div>
+          <div style='display:flex;gap:6px'>
+            <input class='inp' id='nb-scode' type='tel' maxlength='4' value='${auto}' style='flex:1;text-align:center;font-size:18px;font-weight:800;letter-spacing:.1em'/>
+            <button onclick='_regenAddCode()' style='background:#15171f;border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:0 10px;font-size:13px;color:rgba(238,240,248,.5);cursor:pointer;font-family:inherit;flex-shrink:0'>↺</button>
+          </div>
+          <div id='nb-scode-err' style='font-size:10px;color:#ff4455;margin-top:4px;font-weight:600;min-height:14px'></div>
+          <div style='font-size:10px;color:rgba(238,240,248,.28);margin-top:2px;font-weight:500'>What staff type to log in</div>
+        </div>
+        <div>
+          <div class='field-lbl'>Business Admin PIN</div>
+          <input class='inp' id='nb-apin' type='tel' maxlength='4' placeholder='e.g. 9999' style='text-align:center;font-size:18px;font-weight:800;letter-spacing:.1em'/>
+          <div style='font-size:10px;color:rgba(238,240,248,.28);margin-top:4px;font-weight:500'>Full access PIN</div>
+        </div>
+      </div>
+      <div><div class='field-lbl'>Manager PIN</div><input class='inp' id='nb-mpin' type='tel' maxlength='4' placeholder='e.g. 5678'/></div>
       <div id='nb-err' style='color:#ff4455;font-size:12px;font-weight:500;min-height:14px'></div>
       <button class='btn btn-primary btn-full' onclick='saveNewBiz()'>Create Business</button>
     </div>`);
   const ni=$("nb-name"), si=$("nb-slug");
   if (ni&&si) ni.addEventListener("input",()=>si.value=slugify(ni.value));
+
+  // Regen button — always unique
+  window._regenAddCode = function() {
+    const inp = $("nb-scode"); if (!inp) return;
+    const code = genUniqueCode(null);
+    inp.value = code;
+    const errEl = $("nb-scode-err"); if (errEl) errEl.textContent = "";
+    inp.style.borderColor = "";
+  };
+
+  // Live validation as they type
+  const scInp = $("nb-scode");
+  if (scInp) {
+    scInp.addEventListener("input", function() {
+      const errEl = $("nb-scode-err"); if (!errEl) return;
+      const v = this.value.trim();
+      if (v.length === 4 && isCodeTaken(v, null)) {
+        errEl.textContent = "⚠ Code already in use";
+        this.style.borderColor = "#ff4455";
+      } else {
+        errEl.textContent = "";
+        this.style.borderColor = "";
+      }
+    });
+  }
 };
+
+// Random 4-digit code generator
+function genCode() { return String(Math.floor(1000+Math.random()*9000)); }
+
+function isCodeTaken(code, excludeSlug) {
+  const list = getBizList();
+  for (const sl of list) {
+    if (sl === excludeSlug) continue; // skip self when editing
+    const b = LS.get("tp_biz_"+sl, null);
+    if (!b) continue;
+    const sc = (b.storeCode || sl || "").toString().toLowerCase();
+    if (sc === code.toLowerCase()) return true;
+  }
+  return false;
+}
+
+// Generates a code guaranteed not to clash with existing businesses
+function genUniqueCode(excludeSlug) {
+  let code, attempts = 0;
+  do { code = genCode(); attempts++; } while (isCodeTaken(code, excludeSlug) && attempts < 50);
+  return code;
+}
 
 window.saveNewBiz = function() {
   const name=(($("nb-name")||{}).value||"").trim();
   const sl  =slugify(($("nb-slug")||{}).value||name);
   const mpin=(($("nb-mpin")||{}).value||"").trim();
+  const apin=(($("nb-apin")||{}).value||"").trim();
+  const scode=(($("nb-scode")||{}).value||"").trim();
   const err =$("nb-err");
   if (!name) { if(err) err.textContent="Name required"; return; }
   if (!sl)   { if(err) err.textContent="Slug required"; return; }
   if (getBiz(sl)) { if(err) err.textContent="Slug already in use"; return; }
   if (!/^\d{4}$/.test(mpin)) { if(err) err.textContent="Manager PIN must be 4 digits"; return; }
-  saveBiz({name,slug:sl,mgrPin:mpin,brand:{...clone(DEFAULT_BRAND),name},links:clone(DEFAULT_LINKS),staff:clone(DEFAULT_STAFF),teamGoals:[],staffGoals:{}});
+  if (!/^\d{4}$/.test(apin)) { if(err) err.textContent="Business Admin PIN must be 4 digits"; return; }
+  if (!scode) { if(err) err.textContent="Store code required"; return; }
+  if (isCodeTaken(scode, null)) { if(err) err.textContent="Store code already in use — pick another"; return; }
+  saveBiz({name,slug:sl,storeCode:scode,bizAdminPin:apin,mgrPin:mpin,brand:{...clone(DEFAULT_BRAND),name},links:clone(DEFAULT_LINKS),staff:clone(DEFAULT_STAFF),teamGoals:[],staffGoals:{}});
   closeModal(); renderSAPanel($("sa-root")); showToast("Business created!");
 };
 
@@ -521,7 +626,22 @@ window.saEditBiz = function(sl) {
   const b={...DEFAULT_BRAND,...(biz.brand||{})};
   showModal(`<div class='modal-head'><div class='modal-title'>Edit: ${esc(biz.name)}</div><button class='modal-close' onclick='closeModal()'>×</button></div>
     <div style='display:flex;flex-direction:column;gap:11px'>
-      <div class='sec-lbl' style='margin-bottom:0'>Branding</div>
+      <div class='sec-lbl' style='margin-bottom:0'>Access</div>
+      <div style='display:grid;grid-template-columns:1fr 1fr;gap:8px'>
+        <div>
+          <div class='field-lbl'>Store Code</div>
+          <div style='display:flex;gap:6px'>
+            <input class='inp' id='eb-scode' type='tel' maxlength='4' value='${esc(biz.storeCode||"")}' style='flex:1;text-align:center;font-size:18px;font-weight:800;letter-spacing:.1em'/>
+            <button onclick='document.getElementById("eb-scode").value=genUniqueCode("${sl}")' style='background:#15171f;border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:0 10px;font-size:13px;color:rgba(238,240,248,.5);cursor:pointer;font-family:inherit;flex-shrink:0'>↺</button>
+          </div>
+        </div>
+        <div>
+          <div class='field-lbl'>Biz Admin PIN</div>
+          <input class='inp' id='eb-apin' type='tel' maxlength='4' value='${esc(biz.bizAdminPin||"")}' style='text-align:center;font-size:18px;font-weight:800;letter-spacing:.1em'/>
+        </div>
+      </div>
+      <div><div class='field-lbl'>Manager PIN (current: ${biz.mgrPin})</div><input class='inp' id='eb-mp' type='tel' maxlength='4' placeholder='Leave blank to keep'/></div>
+      <div class='sec-lbl' style='margin-top:4px;margin-bottom:0'>Branding</div>
       <div><div class='field-lbl'>Business Name</div><input class='inp' id='eb-name' value='${esc(b.name)}'/></div>
       <div><div class='field-lbl'>Tagline</div><input class='inp' id='eb-tag' value='${esc(b.tagline)}'/></div>
       <div><div class='field-lbl'>Logo URL</div><input class='inp' id='eb-logo' value='${esc(b.logoUrl)}' placeholder='https://…'/></div>
@@ -534,14 +654,19 @@ window.saEditBiz = function(sl) {
         <div><div class='field-lbl'>Background</div><input type='color' id='eb-bg' value='${b.bgColor||"#07080c"}' style='width:100%;height:36px;border:none;background:none;cursor:pointer;border-radius:6px'/></div>
         <div><div class='field-lbl'>Text</div><input type='color' id='eb-tc' value='${b.textColor||"#ffffff"}' style='width:100%;height:36px;border:none;background:none;cursor:pointer;border-radius:6px'/></div>
       </div>
-      <div class='sec-lbl' style='margin-top:4px;margin-bottom:0'>Manager PIN</div>
-      <div><div class='field-lbl'>Current: ${biz.mgrPin}</div><input class='inp' id='eb-mp' type='tel' maxlength='4' placeholder='New PIN (leave blank to keep)'/></div>
       <button class='btn btn-primary btn-full' onclick='saveEditBiz("${sl}")'>Save Changes</button>
     </div>`);
 };
 
 window.saveEditBiz = function(sl) {
   const biz=getBiz(sl); if(!biz) return;
+  const ns=(($("eb-scode")||{}).value||"").trim();
+  const na=(($("eb-apin")||{}).value||"").trim();
+  const np=(($("eb-mp")  ||{}).value||"").trim();
+  if (ns && isCodeTaken(ns, sl)) { showToast("Store code " + ns + " is already in use"); return; }
+  if (ns) biz.storeCode = ns;
+  if (/^\d{4}$/.test(na)) biz.bizAdminPin = na;
+  if (/^\d{4}$/.test(np)) biz.mgrPin = np;
   biz.brand = {
     name:          (($("eb-name")||{}).value||"").trim()||biz.brand.name,
     tagline:       (($("eb-tag") ||{}).value||"").trim(),
@@ -554,8 +679,6 @@ window.saveEditBiz = function(sl) {
     bgColor:       ($("eb-bg")||{}).value||"#07080c",
     textColor:     ($("eb-tc")||{}).value||"#ffffff"
   };
-  const np=(($("eb-mp")||{}).value||"").trim();
-  if (/^\d{4}$/.test(np)) biz.mgrPin=np;
   saveBiz(biz); closeModal(); renderSAPanel($("sa-root")); showToast("Saved!");
 };
 
@@ -643,7 +766,8 @@ function renderBizDash(app, biz) {
   app.innerHTML = "<div id='biz-dash' style='min-height:100vh;display:flex;flex-direction:column'></div>";
   setTimeout(()=>{
     const el=$("biz-dash");
-    if (auth==="manager") { renderManagerDash(el,biz); return; }
+    if (auth==="manager")   { renderManagerDash(el,biz); return; }
+    if (auth==="bizadmin")  { renderBizAdminDash(el,biz); return; }
     if (auth.startsWith("staff:")) {
       const sid=auth.slice(6), s=biz.staff.find(x=>x.id===sid);
       if (s) renderStaffDash(el,biz,s);
@@ -737,6 +861,122 @@ function goalRowRO(g, isTeam) {
 // ═══════════════════════════════════════════
 // MANAGER DASHBOARD
 // ═══════════════════════════════════════════
+// ═══════════════════════════════════════════
+// BUSINESS ADMIN DASHBOARD
+// Full access: all manager tabs + Settings
+// ═══════════════════════════════════════════
+function renderBizAdminDash(el, biz) {
+  const active = biz.staff.filter(s=>s.active);
+  const sd     = active.map(s=>{const st=calcStats(getDemoTaps());return `${s.name}: ${st.count} taps, ${st.reviews} reviews, ${st.avgStr}★, score ${st.score}`;}).join("\n");
+  const allFb  = active.flatMap(s=>calcStats(getDemoTaps()).negFb.map(t=>`${s.name}(${t.rating}★): "${t.feedback}"`)).join("\n");
+
+  el.innerHTML=`
+    <div class='dash-header'>
+      <div>
+        <div class='dash-name'>${esc(biz.name)}</div>
+        <div class='dash-sub' style='color:#ff6b35'>Business Admin · Tap+</div>
+      </div>
+      <button onclick='sessionStorage.removeItem("biz_auth_${biz.slug}");window.location.href="/${biz.slug}/dashboard"' class='dash-exit'>← Exit</button>
+    </div>
+    <div class='dash-tabs' id='batabs'>
+      <button class='dash-tab ai active' onclick='_baTab("ai",this)'><span class='ai-mini-dot'></span> AI Insights</button>
+      <button class='dash-tab' onclick='_baTab("team",this)'>Team</button>
+      <button class='dash-tab' onclick='_baTab("staff",this)'>Staff</button>
+      <button class='dash-tab' onclick='_baTab("links",this)'>Links</button>
+      <button class='dash-tab' onclick='_baTab("goals",this)'>Goals</button>
+      <button class='dash-tab' onclick='_baTab("branding",this)'>Branding</button>
+      <button class='dash-tab ai' onclick='_baTab("estimator",this)'><span class='ai-mini-dot'></span> Estimator</button>
+      <button class='dash-tab' onclick='_baTab("settings",this)' style='color:#ff6b35'>⚙ Settings</button>
+    </div>
+    <div class='dash-body' id='babody'></div>`;
+
+  window._baTab=function(tab,btn) {
+    document.querySelectorAll("#batabs .dash-tab").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    const body=$("babody"); if(!body) return;
+    if      (tab==="ai")        renderAITab(body,active,sd,allFb);
+    else if (tab==="team")      renderTeamTab(body,active);
+    else if (tab==="staff")     renderStaffMgmt(body,biz);
+    else if (tab==="links")     renderLinksTab(body,biz);
+    else if (tab==="goals")     renderGoalsTab(body,biz);
+    else if (tab==="branding")  renderBrandingTab(body,biz);
+    else if (tab==="estimator") renderEstimatorTab(body,active);
+    else if (tab==="settings")  renderBizAdminSettings(body,biz);
+  };
+  _baTab("ai", el.querySelector(".dash-tab"));
+}
+
+function renderBizAdminSettings(body, biz) {
+  const bc = biz.brand?.brandColor || "#00e5a0";
+  body.innerHTML=`
+    <div class='plain-card' style='margin-bottom:12px'>
+      <div style='font-weight:700;font-size:13px;margin-bottom:14px;color:#ff6b35'>🏢 Business Access</div>
+
+      <div class='field-lbl'>Store Code (what staff type to log in)</div>
+      <div style='display:flex;gap:8px;margin-bottom:14px'>
+        <input class='inp' id='bas-code' type='tel' maxlength='4' value='${esc(biz.storeCode||"")}' style='flex:1;text-align:center;font-size:22px;font-weight:900;letter-spacing:.12em'/>
+        <button onclick='document.getElementById("bas-code").value=genUniqueCode("${biz.slug}")' style='background:#15171f;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:0 13px;font-size:13px;color:rgba(238,240,248,.5);cursor:pointer;font-family:inherit;flex-shrink:0'>↺ New</button>
+      </div>
+
+      <div class='field-lbl'>Manager PIN (current: ${biz.mgrPin})</div>
+      <input class='inp' id='bas-mpin' type='tel' maxlength='4' placeholder='New PIN (leave blank to keep)' style='margin-bottom:14px'/>
+
+      <div class='field-lbl'>Your Business Admin PIN</div>
+      <input class='inp' id='bas-apin' type='tel' maxlength='4' placeholder='New PIN (leave blank to keep)' style='margin-bottom:16px'/>
+
+      <button onclick='_saveBizAdminSettings()' class='btn btn-primary btn-full'>Save Settings</button>
+    </div>
+
+    <div class='plain-card'>
+      <div style='font-weight:700;font-size:13px;margin-bottom:10px'>📋 Tap Analytics</div>
+      <div style='display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px'>
+        ${(()=>{
+          const all = active.flatMap(()=>getDemoTaps());
+          const revs = all.filter(t=>t.review).length;
+          const pos  = all.filter(t=>t.rating>=4).length;
+          const avg  = all.length?(all.reduce((a,t)=>a+t.rating,0)/all.length).toFixed(1):"—";
+          const ctr  = pos>0?Math.round((revs/pos)*100):0;
+          return [
+            [all.length,"Total Taps","#00e5a0"],
+            [revs,"Reviews","#ffd166"],
+            [avg+"★","Avg Rating","#ff6b35"],
+            [ctr+"%","Conversion","#7c6aff"]
+          ].map(([v,l,c])=>`<div style='background:#15171f;border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:12px;text-align:center'><div style='font-weight:900;font-size:24px;color:${c};letter-spacing:-.03em;margin-bottom:3px'>${v}</div><div style='font-size:10px;color:rgba(238,240,248,.38);font-weight:700;text-transform:uppercase;letter-spacing:.08em'>${l}</div></div>`).join("");
+        })()}
+      </div>
+      <div class='sec-lbl' style='margin-top:8px'>Per Staff</div>
+      ${active.map(s=>{
+        const st=calcStats(getDemoTaps());
+        const pct=st.count>0?Math.round((st.reviews/st.count)*100):0;
+        return `<div style='display:flex;align-items:center;gap:10px;margin-bottom:8px'>
+          <div style='width:32px;height:32px;border-radius:50%;background:${s.color}22;color:${s.color};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;flex-shrink:0'>${ini(s.name)}</div>
+          <div style='flex:1;min-width:0'>
+            <div style='display:flex;justify-content:space-between;margin-bottom:4px'>
+              <span style='font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>${esc(s.name)}</span>
+              <span style='font-size:11px;color:rgba(238,240,248,.4);flex-shrink:0;margin-left:8px'>${st.count} taps · ${st.reviews} reviews · ${st.avgStr}★</span>
+            </div>
+            <div style='height:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden'>
+              <div style='height:100%;width:${pct}%;background:${s.color};border-radius:3px'></div>
+            </div>
+          </div>
+          <div style='font-size:11px;font-weight:700;color:${s.color};flex-shrink:0'>${pct}%</div>
+        </div>`;
+      }).join("")}
+    </div>`;
+
+  window._saveBizAdminSettings = function() {
+    const code = ($("bas-code")||{}).value?.trim()||"";
+    const mp   = ($("bas-mpin")||{}).value?.trim()||"";
+    const ap   = ($("bas-apin")||{}).value?.trim()||"";
+    if (code && isCodeTaken(code, biz.slug)) { showToast("Code " + code + " is already in use"); return; }
+    if (code) biz.storeCode = code;
+    if (/^\d{4}$/.test(mp)) biz.mgrPin = mp;
+    if (/^\d{4}$/.test(ap)) biz.bizAdminPin = ap;
+    saveBiz(biz);
+    showToast("Settings saved!");
+  };
+}
+
 function renderManagerDash(el, biz) {
   const active = biz.staff.filter(s=>s.active);
   const sd     = active.map(s=>{const st=calcStats(getDemoTaps());return `${s.name}: ${st.count} taps, ${st.reviews} reviews, ${st.avgStr}★, score ${st.score}`;}).join("\n");
