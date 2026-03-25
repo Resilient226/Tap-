@@ -638,55 +638,65 @@ window.saSaveGroq = function() {
 };
 window.saTestFb = async function() {
   const el = $("fb-test-result");
-  const set = (msg, color) => { if (el) { el.textContent = msg; el.style.color = color; } };
+  const set = (msg, color) => { if (el) { el.innerHTML = msg; el.style.color = color; } };
 
-  set("Testing…", "rgba(238,240,248,.5)");
+  set("Reading config from storage…", "rgba(238,240,248,.5)");
+  await new Promise(r => setTimeout(r, 100));
 
-  const cfg = getFbCfg();
-  if (!cfg) { set("❌ Save your config first (all 3 fields required)", "#ff4455"); return; }
+  // Read raw from localStorage to debug exactly what's stored
+  const raw = localStorage.getItem("tp_fb");
+  if (!raw) { set("❌ No config found in storage. Enter all 3 fields and hit Save Config.", "#ff4455"); return; }
 
-  // Step 1 — confirm config loaded
-  set("Step 1/3: Config loaded ✓  Project: " + cfg.projectId, "rgba(238,240,248,.5)");
-  await new Promise(r => setTimeout(r, 400));
-
-  // Step 2 — skip probe, go straight to write attempt
-  // The probe GET was causing "Load failed" due to Firestore database endpoint
-  // needing the database to be fully provisioned. Go straight to document write.
-  set("Step 2/3: Attempting write to Firestore…", "rgba(238,240,248,.5)");
-  await new Promise(r => setTimeout(r, 300));
-
-  // Step 3 — write test document
+  let cfg;
   try {
-    const writeUrl = "https://firestore.googleapis.com/v1/projects/"
-      + cfg.projectId
-      + "/databases/(default)/documents/_tapplus_test/ping?key=" + cfg.apiKey;
+    const parsed = JSON.parse(raw);
+    cfg = typeof parsed === "string" ? JSON.parse(parsed) : parsed;
+  } catch(e) {
+    set("❌ Config corrupted. Re-enter and save.", "#ff4455"); return;
+  }
 
+  if (!cfg || !cfg.apiKey || !cfg.projectId) {
+    set("❌ Missing fields. Has: " + JSON.stringify(Object.keys(cfg||{})), "#ff4455"); return;
+  }
+
+  const writeUrl = "https://firestore.googleapis.com/v1/projects/"
+    + cfg.projectId
+    + "/databases/(default)/documents/_tapplus_test/ping?key=" + cfg.apiKey;
+
+  set("Project: <strong>" + cfg.projectId + "</strong> — writing…", "rgba(238,240,248,.6)");
+  await new Promise(r => setTimeout(r, 200));
+
+  try {
     const res = await fetch(writeUrl, {
       method:  "PATCH",
       mode:    "cors",
-      headers: { "Content-Type": "application/json", "X-Goog-Api-Client": "tap-plus" },
+      headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ fields: {
         ping: { stringValue: "ok" },
-        ts:   { integerValue: String(Date.now()) },
-        from: { stringValue: "tap-plus-admin-test" }
+        ts:   { integerValue: String(Date.now()) }
       }})
     });
 
+    const body = await res.json().catch(() => ({}));
+
     if (res.ok) {
-      set("✓ Firebase working! Check Firestore → _tapplus_test → ping", "#00e5a0");
+      set("✅ Connected! Check Firestore → _tapplus_test → ping", "#00e5a0");
     } else {
-      const err = await res.json().catch(() => ({}));
-      set("❌ Write failed: " + (err?.error?.message || "HTTP " + res.status), "#ff4455");
+      const msg = body?.error?.message || "";
+      const code = body?.error?.status || ("HTTP " + res.status);
+      if (res.status === 404) {
+        set("❌ 404 NOT_FOUND<br><small>" + msg + "</small><br><small>URL: " + writeUrl.replace(cfg.apiKey,"***KEY***") + "</small>", "#ff4455");
+      } else if (res.status === 403) {
+        set("❌ PERMISSION_DENIED — Firestore Rules must be: allow read, write: if true", "#ff4455");
+      } else if (res.status === 400) {
+        set("❌ 400 Bad Request — " + msg + " — Check API Key", "#ff4455");
+      } else {
+        set("❌ " + code + ": " + msg, "#ff4455");
+      }
     }
   } catch(e) {
-    console.error("Firebase write catch:", e);
-    if (e.message && e.message.includes("Load failed")) {
-      set("❌ Firestore database not found. In Firebase Console → Firestore Database → click Create Database → Start in test mode → Enable.", "#ff4455");
-    } else if (e.message && e.message.includes("Failed to fetch")) {
-      set("❌ Cannot reach Firebase. Check: 1) Firestore is created in Firebase console 2) Your internet connection", "#ff4455");
-    } else {
-      set("❌ Write error: " + e.name + ": " + e.message, "#ff4455");
-    }
+    set("❌ " + e.name + ": " + e.message + "<br><small>URL tried: " + writeUrl.replace(cfg.apiKey,"***") + "</small>", "#ff4455");
+    console.error("saTestFb:", e);
   }
 };
 
