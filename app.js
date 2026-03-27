@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════
 // TAP+ MULTI-TENANT PLATFORM — CLEAN REWRITE
 // ═══════════════════════════════════════════
-
+ 
 // ─── STORAGE ───────────────────────────────
 const LS = {
   get(key, fallback) {
@@ -10,12 +10,12 @@ const LS = {
   set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} },
   del(key) { try { localStorage.removeItem(key); } catch {} }
 };
-
+ 
 // ─── CONSTANTS ─────────────────────────────
 const GROQ_URL   = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 const COLORS     = ["#00e5a0","#7c6aff","#ff6b35","#ffd166","#ff4455","#38bdf8","#f472b6","#a3e635"];
-
+ 
 // ─── DEFAULTS ──────────────────────────────
 const DEFAULT_BRAND = {
   name:"Your Restaurant", tagline:"We'd love your feedback",
@@ -32,7 +32,7 @@ const DEFAULT_LINKS = [
   {id:"yl",label:"Yelp",icon:"⭐",url:"https://www.yelp.com/writeareview/biz/YOUR_ID",active:false}
 ];
 const DEFAULT_STAFF = [{id:"s1",firstName:"Staff",lastInitial:"M",color:"#00e5a0",passcode:"1234",active:true,title:"",photo:"",spotify:""}];
-
+ 
 // ─── HELPERS ───────────────────────────────
 const $      = id => document.getElementById(id);
 const uid    = () => Math.random().toString(36).slice(2,11);
@@ -42,7 +42,7 @@ const slugify= (s="") => s.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|
 const fmt    = ts => { const d=new Date(ts); return d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})+", "+d.toLocaleDateString([],{month:"short",day:"numeric"}); };
 const wsStart= () => { const d=new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-d.getDay()); return d.getTime(); };
 const clone  = o => JSON.parse(JSON.stringify(o));
-
+ 
 // Staff name helpers
 // Stores: { firstName, lastInitial } → display as "Alisha S."
 // URL slug: "alisha-s"
@@ -56,10 +56,10 @@ function staffParts(s) {
   const parts = (s.name||"").trim().split(/\s+/);
   return { ...s, firstName: parts[0]||"", lastInitial: parts[1] ? parts[1][0] : "" };
 }
-
+ 
 // ─── BUSINESS STORAGE ──────────────────────
 function getBizList() { return LS.get("tp_businesses",[]); }
-
+ 
 function getBiz(sl) {
   const s = LS.get("tp_biz_"+sl, null);
   if (!s) return null;
@@ -76,7 +76,7 @@ function getBiz(sl) {
     staffGoals:   s.staffGoals || {}
   };
 }
-
+ 
 // Lookup biz by store code (case-insensitive)
 function getBizByCode(code) {
   const normalized = code.trim().toLowerCase().replace(/\s+/g,"-");
@@ -90,30 +90,30 @@ function getBizByCode(code) {
   }
   return null;
 }
-
+ 
 function saveBiz(biz) {
   LS.set("tp_biz_"+biz.slug, biz);
   const list = getBizList();
   if (!list.includes(biz.slug)) { list.push(biz.slug); LS.set("tp_businesses",list); }
 }
-
+ 
 function deleteBiz(sl) {
   LS.del("tp_biz_"+sl);
   LS.set("tp_businesses", getBizList().filter(x=>x!==sl));
 }
-
+ 
 const getApiKey  = () => LS.get("tp_key","");
 const getAdminPin= () => LS.get("tp_admin_pin","0000");
-
+ 
 // ─── GOOGLE SHEETS DATABASE ─────────────────
 // Writes rows via Google Apps Script web app endpoint.
 // No auth, no SDK, no API keys — just a POST to your script URL.
 // Setup: Extensions → Apps Script → paste the provided script → Deploy as web app
-
+ 
 // ─── DATABASE (Vercel API → Google Sheets) ──
 // Writes and reads go through /api/tap and /api/taps
 // which run server-side — no CORS issues
-
+ 
 async function saveTap(tap) {
   const attempt = async () => {
     const res = await fetch("/api/tap", {
@@ -127,7 +127,7 @@ async function saveTap(tap) {
     }
     return res;
   };
-
+ 
   try {
     await attempt();
     console.log("✓ saveTap:", tap.id, tap.status, tap.bizSlug);
@@ -144,7 +144,7 @@ async function saveTap(tap) {
     }, 1500);
   }
 }
-
+ 
 async function fbQueryTaps(bizSlug, staffId) {
   try {
     const url = "/api/taps?bizSlug=" + encodeURIComponent(bizSlug)
@@ -157,7 +157,7 @@ async function fbQueryTaps(bizSlug, staffId) {
     return data;
   } catch(e) { console.error("fbQueryTaps error:", e.message); return []; }
 }
-
+ 
 const _tapCache = {};
 async function getTaps(bizSlug, staffId) {
   const key = bizSlug+"|"+(staffId||"all");
@@ -172,7 +172,7 @@ function clearTapCache(bizSlug) {
 function getSheetsUrl() { return ""; } // legacy stub — not used
 function getFbCfg()     { return null; }
 function resetFbToken() {}
-
+ 
 // ─── PHOTO HELPERS ─────────────────────────
 // Open device file picker, return { file, dataUrl }
 function pickPhoto() {
@@ -190,11 +190,11 @@ function pickPhoto() {
     inp.click();
   });
 }
-
+ 
 // ─── GROQ AI ───────────────────────────────
 let _aiCache = {};
 let _aiArgs  = {};
-
+ 
 async function callGroq(prompt, key) {
   const sys = "You are Tap+ AI, a restaurant performance analyst. Use **bold**, ## headings, - bullets. Be specific and concise. Never invent data.";
   const res = await fetch(GROQ_URL, {
@@ -206,7 +206,7 @@ async function callGroq(prompt, key) {
   const d = await res.json();
   return d?.choices?.[0]?.message?.content || "";
 }
-
+ 
 function renderAIBlock(id, prompt, ckey, msg) {
   const el = $(id); if (!el) return;
   const key = getApiKey();
@@ -219,17 +219,17 @@ function renderAIBlock(id, prompt, ckey, msg) {
     .then(t => { _aiCache[k]=t; el.innerHTML=aiOut(t,k); })
     .catch(e => { el.innerHTML="<div class='ai-err'>"+(e.message==="INVALID_KEY"?"❌ Invalid key":"❌ "+esc(e.message))+"</div>"; });
 }
-
+ 
 function aiOut(text, k) {
   return `<div class='ai-out'><div class='ai-out-lbl'><span class='ai-mini-dot'></span> AI Analysis</div><div class='ai-out-text'>${mdRender(text)}</div><button class='ai-refresh' onclick='refreshAI("${k}")'>↻ Refresh</button></div>`;
 }
-
+ 
 window.refreshAI = function(k) {
   delete _aiCache[k];
   const args = _aiArgs[k];
   if (args) renderAIBlock(...args);
 };
-
+ 
 function mdRender(text="") {
   return text.split("\n").map(line => {
     const bold = s => s.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>");
@@ -239,10 +239,10 @@ function mdRender(text="") {
     return `<div>${bold(esc(line))}</div>`;
   }).join("");
 }
-
+ 
 // ─── MODAL / TOAST ─────────────────────────
 let _modal = null, _toastT = null;
-
+ 
 function showModal(html) {
   if (_modal) _modal.remove();
   _modal = document.createElement("div");
@@ -252,7 +252,7 @@ function showModal(html) {
   document.body.appendChild(_modal);
 }
 window.closeModal = function() { if (_modal) { _modal.remove(); _modal=null; } };
-
+ 
 function showToast(msg) {
   let t = $("toast-el");
   if (!t) {
@@ -265,12 +265,12 @@ function showToast(msg) {
   clearTimeout(_toastT);
   _toastT = setTimeout(() => t.style.transform="translateX(-50%) translateY(60px)", 2500);
 }
-
+ 
 // ─── PIN PAD ───────────────────────────────
 function renderPinPad(containerId, title, sub, hint, dotColor, onSuccess, onBack) {
   const el = $(containerId); if (!el) return;
   let val = "";
-
+ 
   el.innerHTML = `
     <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100%;padding:40px 20px;text-align:center;position:relative">
       ${onBack ? `<button id="pin-back" style="position:absolute;top:16px;left:16px;background:none;border:none;color:rgba(238,240,248,.4);font-size:22px;cursor:pointer">←</button>` : ""}
@@ -285,18 +285,18 @@ function renderPinPad(containerId, title, sub, hint, dotColor, onSuccess, onBack
       <div class="pe" style="color:#ff4455;font-size:13px;margin-top:11px;min-height:18px;font-weight:500"></div>
       ${hint ? `<div style="font-size:11px;color:rgba(238,240,248,.18);margin-top:14px;font-weight:500">${esc(hint)}</div>` : ""}
     </div>`;
-
+ 
   const dots = el.querySelectorAll(".pd");
   const errEl = el.querySelector(".pe");
-
+ 
   function update() {
     dots.forEach((d,i) => { d.style.background=i<val.length?dotColor:"transparent"; d.style.borderColor=i<val.length?dotColor:"rgba(255,255,255,.15)"; });
     errEl.textContent = "";
   }
-
+ 
   const backBtn = el.querySelector("#pin-back");
   if (backBtn && onBack) backBtn.addEventListener("click", onBack);
-
+ 
   el.querySelectorAll(".pin-key").forEach(btn => {
     btn.addEventListener("click", () => {
       const k = btn.dataset.k;
@@ -311,7 +311,7 @@ function renderPinPad(containerId, title, sub, hint, dotColor, onSuccess, onBack
     });
   });
 }
-
+ 
 // ─── ROUTER ────────────────────────────────
 function route() {
   // Verify API endpoints are reachable on load
@@ -322,26 +322,26 @@ function route() {
   const path  = window.location.pathname.replace(/\/+$/,"");
   const app   = $("app"); if (!app) return;
   const parts = path.split("/").filter(Boolean);
-
+ 
   // / → platform home (staff/manager see this, admin button hidden bottom-left)
   if (!parts.length) { renderPlatformHome(app); return; }
-
+ 
   const sl  = parts[0];
   const biz = getBiz(sl);
-
+ 
   // /[slug]/dashboard → business staff + manager login
   if (parts[1]==="dashboard") { biz ? renderBizDash(app,biz) : (app.innerHTML=notFound()); return; }
-
+ 
   // /[slug]/tap/[id] or /[slug] → customer page
   if (parts[1]==="tap" || parts.length===1) { biz ? renderCustomerPage(app,biz,parts[1]==="tap"?parts[2]:null) : (app.innerHTML=notFound()); return; }
-
+ 
   app.innerHTML = notFound();
 }
-
+ 
 function notFound() {
   return `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:40px;color:#eef0f8"><div style="font-size:44px;margin-bottom:14px">🤔</div><div style="font-weight:800;font-size:20px;margin-bottom:8px">Page not found</div><div style="font-size:13px;color:rgba(238,240,248,.4)">Check the URL and try again.</div></div>`;
 }
-
+ 
 // ═══════════════════════════════════════════
 // SUPER ADMIN
 // ═══════════════════════════════════════════
@@ -351,7 +351,7 @@ function renderPlatformHome(app) {
     <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:40px 24px;text-align:center;position:relative;z-index:1">
       <div style="font-weight:900;font-size:52px;letter-spacing:-.04em;margin-bottom:8px;background:linear-gradient(135deg,#fff 60%,rgba(255,255,255,.4));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Tap<span style="-webkit-text-fill-color:#00e5a0">+</span></div>
       <div style="font-size:14px;color:rgba(238,240,248,.4);font-weight:500;margin-bottom:48px;letter-spacing:.02em">Smart review management</div>
-
+ 
       <div style="width:100%;max-width:320px">
         <div style="font-size:13px;font-weight:600;color:rgba(238,240,248,.4);margin-bottom:16px;letter-spacing:.04em;text-transform:uppercase">Enter Store Code</div>
         <input id="store-code-inp" class="inp" placeholder="e.g. JAMES or 4821" maxlength="20"
@@ -361,23 +361,23 @@ function renderPlatformHome(app) {
         <div id="store-code-err" style="color:#ff4455;font-size:12px;font-weight:500;min-height:16px;margin-bottom:12px"></div>
         <button onclick="_submitStoreCode()" style="width:100%;padding:14px;background:#00e5a0;color:#07080c;border:none;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Continue →</button>
       </div>
-
+ 
       <button onclick="showSuperAdminPin()" style="position:fixed;bottom:16px;left:16px;background:none;border:none;cursor:pointer;padding:8px;border-radius:8px;color:rgba(238,240,248,.1);font-size:11px;font-weight:700;letter-spacing:.06em;font-family:inherit;transition:color .2s" onmouseover="this.style.color='rgba(238,240,248,.4)'" onmouseout="this.style.color='rgba(238,240,248,.1)'">Admin</button>
     </div>`;
-
+ 
   // Auto-focus the input
   setTimeout(() => { const inp = $("store-code-inp"); if (inp) inp.focus(); }, 100);
-
+ 
   window._submitStoreCode = function() {
     const raw = ($("store-code-inp") || {}).value || "";
     const code = raw.trim().toLowerCase().replace(/\s+/g, "-");
     const err = $("store-code-err");
-
+ 
     if (!code) {
       if (err) err.textContent = "Enter your store code";
       return;
     }
-
+ 
     const biz = getBizByCode(code);
     if (!biz) {
       if (err) err.textContent = "Store code not found. Check with your manager.";
@@ -386,22 +386,22 @@ function renderPlatformHome(app) {
       if (inp) { inp.style.borderColor = "#ff4455"; setTimeout(() => inp.style.borderColor = "", 1500); }
       return;
     }
-
+ 
     // Valid — go to step 2: role select for this business
     renderRoleSelect(app, biz);
   };
 }
-
+ 
 function renderRoleSelect(app, biz) {
   const bc = biz.brand?.brandColor || "#00e5a0";
   app.innerHTML = `
     <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:40px 24px;text-align:center;position:relative;z-index:1">
       <button onclick="renderPlatformHome($('app'))" style="position:absolute;top:20px;left:20px;background:none;border:none;color:rgba(238,240,248,.4);font-size:22px;cursor:pointer">←</button>
-
+ 
       <div style="width:48px;height:48px;border-radius:14px;background:${bc}22;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;color:${bc};margin-bottom:12px;flex-shrink:0">${ini(biz.name)}</div>
       <div style="font-weight:800;font-size:20px;letter-spacing:-.02em;margin-bottom:4px">${esc(biz.name)}</div>
       <div style="font-size:13px;color:rgba(238,240,248,.38);font-weight:500;margin-bottom:40px">Who are you?</div>
-
+ 
       <div style="width:100%;max-width:300px;display:flex;flex-direction:column;gap:11px">
         <div onclick="_goToPIN('staff')" style="background:#0e0f15;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:20px 22px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:14px;transition:border-color .15s" onmouseover="this.style.borderColor='rgba(255,255,255,.2)'" onmouseout="this.style.borderColor='rgba(255,255,255,.08)'">
           <div style="width:44px;height:44px;border-radius:13px;background:rgba(0,229,160,.08);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">👤</div>
@@ -411,7 +411,7 @@ function renderRoleSelect(app, biz) {
           </div>
           <div style="font-size:18px;color:rgba(238,240,248,.25)">›</div>
         </div>
-
+ 
         <div onclick="_goToPIN('manager')" style="background:#0e0f15;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:20px 22px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:14px;transition:border-color .15s" onmouseover="this.style.borderColor='rgba(255,255,255,.2)'" onmouseout="this.style.borderColor='rgba(255,255,255,.08)'">
           <div style="width:44px;height:44px;border-radius:13px;background:rgba(167,139,250,.08);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">⚙️</div>
           <div style="flex:1">
@@ -420,7 +420,7 @@ function renderRoleSelect(app, biz) {
           </div>
           <div style="font-size:18px;color:rgba(238,240,248,.25)">›</div>
         </div>
-
+ 
         <div onclick="_goToPIN('bizadmin')" style="background:#0e0f15;border:1px solid rgba(255,107,53,.18);border-radius:18px;padding:20px 22px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:14px;transition:border-color .15s" onmouseover="this.style.borderColor='rgba(255,107,53,.4)'" onmouseout="this.style.borderColor='rgba(255,107,53,.18)'">
           <div style="width:44px;height:44px;border-radius:13px;background:rgba(255,107,53,.08);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">🏢</div>
           <div style="flex:1">
@@ -430,26 +430,26 @@ function renderRoleSelect(app, biz) {
           <div style="font-size:18px;color:rgba(238,240,248,.25)">›</div>
         </div>
       </div>
-
+ 
       <button onclick="showSuperAdminPin()" style="position:fixed;bottom:16px;left:16px;background:none;border:none;cursor:pointer;padding:8px;color:rgba(238,240,248,.1);font-size:11px;font-weight:700;letter-spacing:.06em;font-family:inherit;transition:color .2s" onmouseover="this.style.color='rgba(238,240,248,.4)'" onmouseout="this.style.color='rgba(238,240,248,.1)'">Admin</button>
     </div>`;
-
+ 
   window._goToPIN = function(role) {
     renderLoginPIN(app, biz, role);
   };
 }
-
+ 
 function renderLoginPIN(app, biz, role) {
   const bc = biz.brand?.brandColor || "#00e5a0";
   const isMgr   = role === "manager";
   const isBizAdmin = role === "bizadmin";
   const title = isBizAdmin ? "Business Admin PIN" : isMgr ? "Manager PIN" : "Employee PIN";
   const color = isBizAdmin ? "#ff6b35" : isMgr ? "#a78bfa" : bc;
-
+ 
   app.innerHTML = `<div id="login-pin-wrap" style="min-height:100vh;display:flex;flex-direction:column;position:relative">
     <button onclick="renderRoleSelect($('app'),getBiz('${biz.slug}'))" style="position:absolute;top:20px;left:20px;background:none;border:none;color:rgba(238,240,248,.4);font-size:22px;cursor:pointer;z-index:10">←</button>
   </div>`;
-
+ 
   setTimeout(() => {
     renderPinPad("login-pin-wrap", title, biz.name, "", color, v => {
       if (isBizAdmin) {
@@ -481,7 +481,7 @@ function renderLoginPIN(app, biz, role) {
     }, () => renderRoleSelect(app, biz));
   }, 0);
 }
-
+ 
 function showSuperAdminPin() {
   const app = $("app");
   // Overlay the pin pad without leaving the home page
@@ -491,7 +491,7 @@ function showSuperAdminPin() {
   overlay.innerHTML = "<div id='sa-pin-inner' style='width:100%;max-width:360px;min-height:420px;display:flex;flex-direction:column'></div>";
   overlay.addEventListener("click", e => { if (e.target===overlay) overlay.remove(); });
   document.body.appendChild(overlay);
-
+ 
   setTimeout(() => {
     renderPinPad("sa-pin-inner","Tap+ Admin","Enter your PIN","",  "#a78bfa", v => {
       if (v===getAdminPin()) {
@@ -503,18 +503,18 @@ function showSuperAdminPin() {
     }, () => overlay.remove());
   }, 0);
 }
-
+ 
 function renderSuperAdmin(app) {
   app.innerHTML = "<div id='sa-root' style='min-height:100vh'></div>";
   const el = $("sa-root");
   renderSAPanel(el);
 }
-
+ 
 function renderSAPanel(el) {
   const bizList = getBizList();
   const apiKey  = getApiKey();
   const fbCfg   = getFbCfg();
-
+ 
   el.innerHTML = `
     <div style="max-width:520px;margin:0 auto;padding:24px 18px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px">
@@ -527,7 +527,7 @@ function renderSAPanel(el) {
           <button onclick='sessionStorage.removeItem("sa_auth");window.location.href="/"' style="background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:9px;padding:7px 13px;font-size:12px;color:#ff4455;cursor:pointer;font-family:inherit;font-weight:600">Sign Out</button>
         </div>
       </div>
-
+ 
       <div class="sec-lbl">Businesses (${bizList.length})</div>
       ${bizList.length===0
         ? `<div style="background:#0e0f15;border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:20px;text-align:center;font-size:13px;color:rgba(238,240,248,.38);margin-bottom:12px">No businesses yet.</div>`
@@ -554,11 +554,11 @@ function renderSAPanel(el) {
             </div>`;
           }).join("")
       }
-
+ 
       <button onclick='saAddBiz()' style="width:100%;padding:13px;background:#00e5a0;color:#07080c;border:none;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;margin-bottom:24px">+ Add Business</button>
-
+ 
       <div class="sec-lbl">Platform Settings</div>
-
+ 
       <div style="background:#0e0f15;border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:16px;margin-bottom:10px">
         <div style="font-weight:700;font-size:13px;margin-bottom:10px">Groq AI Key</div>
         <div style="display:flex;gap:8px">
@@ -567,14 +567,14 @@ function renderSAPanel(el) {
         </div>
         ${apiKey?`<div style="font-size:11px;color:#00e5a0;margin-top:6px;font-weight:600">✓ Connected</div>`:""}
       </div>
-
+ 
       <div style="background:#0e0f15;border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:16px;margin-bottom:10px">
         <div style="font-weight:700;font-size:13px;margin-bottom:4px">Firebase Database</div>
         <div style="font-size:12px;color:rgba(238,240,248,.38);margin-bottom:10px;font-weight:500;line-height:1.6">Tap data flows through Vercel → Firestore. No config needed here — handled server-side.</div>
         <button onclick='saTestSheets()' style="width:100%;padding:11px;background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.2);border-radius:10px;font-size:13px;font-weight:700;color:#00e5a0;cursor:pointer;font-family:inherit">Test Connection ✓</button>
         <div id="sheets-test-result" style="font-size:12px;margin-top:8px;min-height:16px;font-weight:600"></div>
       </div>
-
+ 
       <div style="background:#0e0f15;border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:16px">
         <div style="font-weight:700;font-size:13px;margin-bottom:10px">Admin PIN</div>
         <div style="display:flex;gap:8px">
@@ -584,22 +584,22 @@ function renderSAPanel(el) {
       </div>
     </div>`;
 }
-
+ 
 window.saSaveGroq = function() {
   const k = ($("sa-groq")||{}).value||"";
   if (k && !k.startsWith("•")) { LS.set("tp_key",k); showToast("API key saved!"); renderSAPanel($("sa-root")); }
   else showToast("Enter a valid key starting with gsk_");
 };
 window.saTestFb = async function() { saTestSheets(); };
-
+ 
 window.saSaveFb    = function() {};
 window.saSaveSheets = function() {};
-
+ 
 window.saTestSheets = async function() {
   const el = $("sheets-test-result");
   const set = (msg, color) => { if(el){ el.innerHTML=msg; el.style.color=color; } };
   set("Testing…", "rgba(238,240,248,.5)");
-
+ 
   try {
     // Test read endpoint
     const r1 = await fetch("/api/taps?bizSlug=_test");
@@ -612,9 +612,9 @@ window.saTestSheets = async function() {
       }
       return;
     }
-
+ 
     set("Read ✓ — testing write…", "rgba(238,240,248,.5)");
-
+ 
     // Test write endpoint
     const testTap = {
       id: "test-"+Date.now(), ts: Date.now(), bizSlug: "_test",
@@ -627,7 +627,7 @@ window.saTestSheets = async function() {
       headers: {"Content-Type":"application/json"},
       body: JSON.stringify(testTap)
     });
-
+ 
     if (r2.ok) {
       set("✅ Connected! Firestore is receiving tap data.", "#00e5a0");
     } else {
@@ -651,7 +651,7 @@ window.saDeleteBiz = function(sl) {
   if (!confirm("Delete "+sl+"? Cannot be undone.")) return;
   deleteBiz(sl); renderSAPanel($("sa-root")); showToast("Business removed");
 };
-
+ 
 window.saAddBiz = function() {
   const auto = genUniqueCode(null);
   showModal(`<div class='modal-head'><div class='modal-title'>Add Business</div><button class='modal-close' onclick='closeModal()'>×</button></div>
@@ -680,7 +680,7 @@ window.saAddBiz = function() {
     </div>`);
   const ni=$("nb-name"), si=$("nb-slug");
   if (ni&&si) ni.addEventListener("input",()=>si.value=slugify(ni.value));
-
+ 
   // Regen button — always unique
   window._regenAddCode = function() {
     const inp = $("nb-scode"); if (!inp) return;
@@ -689,7 +689,7 @@ window.saAddBiz = function() {
     const errEl = $("nb-scode-err"); if (errEl) errEl.textContent = "";
     inp.style.borderColor = "";
   };
-
+ 
   // Live validation as they type
   const scInp = $("nb-scode");
   if (scInp) {
@@ -706,10 +706,10 @@ window.saAddBiz = function() {
     });
   }
 };
-
+ 
 // Random 4-digit code generator
 function genCode() { return String(Math.floor(1000+Math.random()*9000)); }
-
+ 
 function isCodeTaken(code, excludeSlug) {
   const list = getBizList();
   for (const sl of list) {
@@ -721,14 +721,14 @@ function isCodeTaken(code, excludeSlug) {
   }
   return false;
 }
-
+ 
 // Generates a code guaranteed not to clash with existing businesses
 function genUniqueCode(excludeSlug) {
   let code, attempts = 0;
   do { code = genCode(); attempts++; } while (isCodeTaken(code, excludeSlug) && attempts < 50);
   return code;
 }
-
+ 
 window.saveNewBiz = function() {
   const name=(($("nb-name")||{}).value||"").trim();
   const sl  =slugify(($("nb-slug")||{}).value||name);
@@ -746,7 +746,7 @@ window.saveNewBiz = function() {
   saveBiz({name,slug:sl,storeCode:scode,bizAdminPin:apin,mgrPin:mpin,brand:{...clone(DEFAULT_BRAND),name},links:clone(DEFAULT_LINKS),staff:clone(DEFAULT_STAFF),teamGoals:[],staffGoals:{}});
   closeModal(); renderSAPanel($("sa-root")); showToast("Business created!");
 };
-
+ 
 window.saEditBiz = function(sl) {
   const biz=getBiz(sl); if(!biz) return;
   const b={...DEFAULT_BRAND,...(biz.brand||{})};
@@ -783,7 +783,7 @@ window.saEditBiz = function(sl) {
       <button class='btn btn-primary btn-full' onclick='saveEditBiz("${sl}")'>Save Changes</button>
     </div>`);
 };
-
+ 
 window.saveEditBiz = function(sl) {
   const biz=getBiz(sl); if(!biz) return;
   const ns=(($("eb-scode")||{}).value||"").trim();
@@ -807,7 +807,7 @@ window.saveEditBiz = function(sl) {
   };
   saveBiz(biz); closeModal(); renderSAPanel($("sa-root")); showToast("Saved!");
 };
-
+ 
 // ═══════════════════════════════════════════
 // CUSTOMER PAGE
 // ═══════════════════════════════════════════
@@ -821,7 +821,7 @@ function renderCustomerPage(app, biz, staffId) {
     biz.staff.find(s => s.id === staffId)
   ) : null;
   const staffName = staffRec ? staffDisplayName(staffParts(staffRec)) : "General";
-
+ 
   // ── LOG TAP IMMEDIATELY on page load ─────────────────────────────────────
   // This is the true "card tap" moment — the instant the customer's phone loads.
   // We write a pending record now, then update it with rating/feedback when they submit.
@@ -840,17 +840,17 @@ function renderCustomerPage(app, biz, staffId) {
     redirected:false,
     status:    "tapped"   // pending — no rating yet
   });
-
+ 
   let rating = 0;
-
+ 
   document.body.style.background = b.bgColor;
   document.body.style.backgroundImage = "none";
-
+ 
   // Staff profile extras
   const staffTitle   = staffRec?.title   || "";
   const staffPhoto   = staffRec?.photo   || "";
   const staffSpotify = staffRec?.spotify || "";
-
+ 
   // Parse Spotify embed URL
   function spotifyEmbedUrl(link) {
     if (!link) return "";
@@ -858,12 +858,12 @@ function renderCustomerPage(app, biz, staffId) {
     return m ? `https://open.spotify.com/embed/${m[1]}/${m[2]}?utm_source=generator&theme=0&autoplay=1` : "";
   }
   const spotifyEmbed = spotifyEmbedUrl(staffSpotify);
-
+ 
   // Logo — top center, rounded rectangle
   const logoBlock = b.logoUrl
     ? `<img src='${esc(b.logoUrl)}' alt='${esc(b.name)}' style='height:72px;max-width:200px;object-fit:contain;border-radius:14px;margin-bottom:14px'/>`
     : `<div style='font-weight:900;font-size:26px;letter-spacing:-.03em;color:${b.textColor};margin-bottom:14px'>${esc(b.name)}</div>`;
-
+ 
   // Staff bubble — top right corner, tappable circle
   const staffBubble = staffRec ? `
     <div id="staff-bubble" onclick="_toggleStaffCard()" style="position:absolute;top:14px;right:14px;cursor:pointer;z-index:10">
@@ -876,7 +876,7 @@ function renderCustomerPage(app, biz, staffId) {
       <div style="font-weight:800;font-size:13px">${esc(staffDisplayName(staffParts(staffRec)))}</div>
       ${staffTitle ? `<div style="font-size:11px;color:${b.brandColor};font-weight:600;margin-top:2px">${esc(staffTitle)}</div>` : ""}
     </div>` : "";
-
+ 
   // Spotify embed block
   const spotifyBlock = spotifyEmbed ? `
     <div style="width:100%;max-width:340px;margin-bottom:16px;border-radius:14px;overflow:hidden">
@@ -884,7 +884,7 @@ function renderCustomerPage(app, biz, staffId) {
         allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
         loading="lazy" style="border-radius:14px;display:block"></iframe>
     </div>` : "";
-
+ 
   // Inject page-specific styles
   const styleEl = document.getElementById('tap-page-styles') || document.createElement('style');
   styleEl.id = 'tap-page-styles';
@@ -904,7 +904,7 @@ function renderCustomerPage(app, biz, staffId) {
     .review-btn:active { transform:scale(.97); }
   `;
   document.head.appendChild(styleEl);
-
+ 
   // SVG star — crisp on all screens
   const starSvg = (filled, color) => `<svg width="44" height="44" viewBox="0 0 44 44" fill="none">
     <path d="M22 4l4.5 9.1 10 1.46-7.25 7.06 1.71 9.97L22 26.9l-8.96 4.7 1.71-9.97L7.5 14.56l10-1.46z"
@@ -912,12 +912,12 @@ function renderCustomerPage(app, biz, staffId) {
       stroke="${filled ? color : 'rgba(255,255,255,.2)'}"
       stroke-width="1.5" stroke-linejoin="round"/>
   </svg>`;
-
+ 
   // ── Data for the page ────────────────────────────────────────────────────
   const bulletinLinks   = b.bulletinLinks || [];
   const allowed         = b.allowedStaffLinks || {};
   const staffLinks      = (staffRec?.links || []).filter(l => allowed[l.type]);
-
+ 
   const LINK_META = {
     spotify:   { icon:"🎵", label:"Music",     color:"#1db954" },
     phone:     { icon:"📞", label:"Call",      color:"#00e5a0" },
@@ -926,7 +926,7 @@ function renderCustomerPage(app, biz, staffId) {
     tiktok:    { icon:"🎵", label:"TikTok",    color:"#ff0050" },
     custom:    { icon:"🔗", label:"Link",      color:"#ffd166" },
   };
-
+ 
   function renderLinkRow(l) {
     const meta = LINK_META[l.type] || LINK_META.custom;
     if (l.type === "spotify") {
@@ -950,7 +950,7 @@ function renderCustomerPage(app, biz, staffId) {
       <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M7 4l5 5-5 5" stroke="${b.brandColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </a>`;
   }
-
+ 
   // Staff bubble — top right, tappable
   const staffBubbleHTML = staffRec ? `
     <div id="staff-bubble" onclick="_toggleStaffCard(event)"
@@ -984,7 +984,7 @@ function renderCustomerPage(app, biz, staffId) {
         </a>`;
       }).join("")}
     </div>` : "";
-
+ 
   app.innerHTML = `
     <style>
       @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
@@ -999,11 +999,11 @@ function renderCustomerPage(app, biz, staffId) {
       .cust-in-5{animation-delay:.31s}
       .tap-link{transition:background .15s,transform .1s}.tap-link:active{transform:scale(.97)}
     </style>
-
+ 
     <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px 20px 48px;position:relative;max-width:420px;margin:0 auto">
-
+ 
       ${staffBubbleHTML}
-
+ 
       <!-- 1. Business logo -->
       <div class="cust-in cust-in-1" style="margin-top:16px;margin-bottom:22px;text-align:center">
         ${b.logoUrl
@@ -1012,7 +1012,7 @@ function renderCustomerPage(app, biz, staffId) {
         }
         ${b.tagline?`<div style="font-size:13px;color:${b.textColor};opacity:.4;margin-top:8px;font-weight:500">${esc(b.tagline)}</div>`:""}
       </div>
-
+ 
       <!-- 2. Star rating -->
       <div class="cust-in cust-in-2" style="text-align:center;margin-bottom:28px;width:100%">
         <div style="font-size:21px;font-weight:900;color:${b.textColor};margin-bottom:20px;letter-spacing:-.03em;line-height:1.25">${esc(b.ratingQuestion)}</div>
@@ -1027,26 +1027,26 @@ function renderCustomerPage(app, biz, staffId) {
             </div>`).join("")}
         </div>
       </div>
-
+ 
       <div id="cust-after" class="cust-in cust-in-3" style="width:100%"></div>
-
+ 
       <!-- 3. Bulletin board — business links -->
       ${bulletinLinks.length ? `
         <div class="cust-in cust-in-4" style="width:100%;margin-top:8px">
           <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px;text-align:center">${esc(b.name)}</div>
           ${bulletinLinks.map(l=>renderLinkRow(l)).join("")}
         </div>` : ""}
-
+ 
       <!-- 4. Staff personal links -->
       ${staffLinks.length ? `
         <div class="cust-in cust-in-5" style="width:100%;margin-top:${bulletinLinks.length?'4':'8'}px">
           <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px;text-align:center">${esc(staffDisplayName(staffParts(staffRec)))}</div>
           ${staffLinks.map(l=>renderLinkRow(l)).join("")}
         </div>` : ""}
-
+ 
     </div>
     <div style="position:fixed;bottom:10px;left:0;right:0;text-align:center;font-size:9px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.08);pointer-events:none">POWERED BY TAP+</div>`;
-
+ 
   window._toggleStaffCard = function(e) {
     e && e.stopPropagation();
     const card = document.getElementById("staff-card");
@@ -1058,7 +1058,7 @@ function renderCustomerPage(app, biz, staffId) {
     if (card && bubble && !bubble.contains(e.target) && !card.contains(e.target))
       card.style.display = "none";
   });
-
+ 
   // SVG star fill helper
   function updateStars(r) {
     const bc = b.brandColor;
@@ -1071,7 +1071,7 @@ function renderCustomerPage(app, biz, staffId) {
       if (filled) { el.classList.add("lit"); setTimeout(()=>el.classList.remove("lit"),350); }
     }
   }
-
+ 
   window._cStar = function(r) {
     rating = r;
     updateStars(r);
@@ -1083,7 +1083,7 @@ function renderCustomerPage(app, biz, staffId) {
       ring.style.animation = "pulseRing .5s ease forwards";
     }
     const after=$("cust-after"); if(!after) return;
-
+ 
     if (r===5 && firstLink) {
       // Update the existing tap record with rating + redirect info
       saveTap({id:tapId,ts:tapTs,bizSlug:biz.slug,staffId:staffId||"general",staffName,rating:r,platform:firstLink.label,review:true,feedback:"",redirected:true,status:"rated"});
@@ -1100,7 +1100,7 @@ function renderCustomerPage(app, biz, staffId) {
       setTimeout(()=>window.location.href=firstLink.url, 1100);
       return;
     }
-
+ 
     if (r>=4 && activeLinks.length>0) {
       saveTap({id:tapId,ts:tapTs,bizSlug:biz.slug,staffId:staffId||"general",staffName,rating:r,platform:null,review:false,feedback:"",redirected:false,status:"rated"});
       after.innerHTML=`
@@ -1117,7 +1117,7 @@ function renderCustomerPage(app, biz, staffId) {
         `<button onclick='_cDone()' style='width:100%;margin-top:8px;padding:15px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;color:${b.textColor};opacity:.6'>Done, no thanks</button>`;
       return;
     }
-
+ 
     if (r>0) {
       after.innerHTML=`
         <div style='font-size:13px;font-weight:600;color:${b.textColor};opacity:.55;margin-bottom:12px'>${esc(b.lowRatingMsg)}</div>
@@ -1134,7 +1134,7 @@ function renderCustomerPage(app, biz, staffId) {
       };
     }
   };
-
+ 
   window._cDone   = () => app.innerHTML=tyScreen(b);
   window._cSubmit = () => {
     const fb    = ($("cust-fb")||{}).value||"";
@@ -1143,7 +1143,7 @@ function renderCustomerPage(app, biz, staffId) {
     app.innerHTML=tyScreen(b);
   };
 }
-
+ 
 function tyScreen(b) {
   return `<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:40px;background:${b.bgColor}'>
     <div style='animation:starPop .5s ease'>
@@ -1154,19 +1154,19 @@ function tyScreen(b) {
     <div style='position:fixed;bottom:12px;left:0;right:0;text-align:center;font-size:9px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.1)'>POWERED BY TAP+</div>
   </div>`;
 }
-
+ 
 // ═══════════════════════════════════════════
 // BIZ DASHBOARD AUTH
 // ═══════════════════════════════════════════
 function renderBizDash(app, biz) {
   const auth = sessionStorage.getItem("biz_auth_"+biz.slug)||"";
-
+ 
   if (!auth) {
     // Use the same clean role-select flow
     renderRoleSelect(app, biz);
     return;
   }
-
+ 
   app.innerHTML = "<div id='biz-dash' style='min-height:100vh;display:flex;flex-direction:column'></div>";
   setTimeout(()=>{
     const el=$("biz-dash");
@@ -1179,7 +1179,7 @@ function renderBizDash(app, biz) {
     }
   },0);
 }
-
+ 
 // ═══════════════════════════════════════════
 // DEMO DATA + STATS
 // ═══════════════════════════════════════════
@@ -1197,7 +1197,7 @@ function getDemoTaps() {
     {ts:t-H*98, rating:5,platform:"google",review:true, feedback:"",status:"rated"}
   ];
 }
-
+ 
 function calcStats(taps) {
   const reviews  = taps.filter(t=>t.review).length;
   const ratings  = taps.map(t=>t.rating);
@@ -1209,7 +1209,7 @@ function calcStats(taps) {
   const negFb    = taps.filter(t=>t.feedback&&t.rating<=3);
   return {count:taps.length,reviews,avg,avgStr:avg?avg.toFixed(1):"—",weekTaps,score,ctr,negFb};
 }
-
+ 
 // ═══════════════════════════════════════════
 // STAFF DASHBOARD
 // ═══════════════════════════════════════════
@@ -1230,7 +1230,7 @@ function renderStaffDash(el, biz, s) {
       <button class='dash-tab' onclick='_sTab("branding",this)'>✨ My Branding</button>
     </div>
     <div class='dash-body' id='sbody'></div>`;
-
+ 
   // Show loading state, fetch real data
   const sbody=$("sbody");
   // taps will be loaded async per tab — use closure
@@ -1242,17 +1242,17 @@ function renderStaffDash(el, biz, s) {
     if (!_staffTaps || _staffTaps.length===0) _staffTaps = await getTaps(biz.slug, s.id);
     return _staffTaps;
   }
-
+ 
   window._sTab=async function(tab,btn) {
     document.querySelectorAll("#stabs .dash-tab").forEach(b=>b.classList.remove("active"));
     btn.classList.add("active");
     const body=$("sbody"); if(!body) return;
-
+ 
     // Show spinner while loading
     body.innerHTML="<div class='ai-loading' style='padding:30px 0'><div class='ai-spinner'></div>Loading…</div>";
     const taps = await loadStaffTaps();
     const st   = calcStats(taps);
-
+ 
     if (tab==="coaching") {
       const p=`Coach ${staffParts(s).firstName||s.name} directly. Stats: ${st.count} taps, ${st.reviews} reviews, ${st.avgStr}★, ${st.ctr}% CTR, score ${st.score}. 3 coaching tips: genuine compliment, one improvement, motivating close. Under 200 words.`;
       body.innerHTML=`<div class='ai-card'><div class='ai-card-head'><div class='ai-card-ico'>💬</div><div><div class='ai-card-title'>Your AI Coach</div><div class='ai-card-sub'>${st.count} taps · ${st.avgStr}★</div></div></div><div id='ai-coaching'></div></div>`;
@@ -1272,12 +1272,12 @@ function renderStaffDash(el, biz, s) {
     }
     else if (tab==="branding") {
       const sp = staffParts(s);
-
+ 
       // Allowed link types set by admin
       const allowedTypes = Object.entries(biz.brand?.allowedStaffLinks||{}).filter(([,v])=>v).map(([k])=>k);
       const LINK_LABELS2 = {spotify:"🎵 Spotify",phone:"📞 Phone",email:"✉️ Email",instagram:"📸 Instagram",tiktok:"🎵 TikTok",custom:"🔗 Custom Link"};
       if (!s.links) s.links = [];
-
+ 
       const linksSection = allowedTypes.length ? `
         <div class='sec-lbl' style='margin-top:4px;margin-bottom:6px'>My Links</div>
         <div style='font-size:11px;color:rgba(238,240,248,.35);margin-bottom:10px;font-weight:500'>Show when customers tap your photo</div>
@@ -1295,7 +1295,7 @@ function renderStaffDash(el, biz, s) {
         <div style='background:#15171f;border-radius:10px;padding:12px;font-size:12px;color:rgba(238,240,248,.35);margin-bottom:14px;line-height:1.5'>
           No link types enabled yet. Ask your admin to turn them on in the Branding tab.
         </div>`;
-
+ 
       body.innerHTML=`
         <div class='plain-card' style='margin-bottom:12px'>
           <div style='font-weight:700;font-size:13px;margin-bottom:14px'>✨ My Tap Page</div>
@@ -1314,10 +1314,10 @@ function renderStaffDash(el, biz, s) {
           ${linksSection}
           <button onclick='_sbSave()' class='btn btn-primary btn-full'>Save My Branding</button>
         </div>`;
-
+ 
       // Render existing links
       renderSbLinks();
-
+ 
             window._sbPickPhoto = async function() {
         const r = await pickPhoto(); if (!r) return;
         const av = $("sb-photo-av"); if (av) av.innerHTML=`<img src='${r.dataUrl}' style='width:100%;height:100%;object-fit:cover'/>`;
@@ -1332,7 +1332,7 @@ function renderStaffDash(el, biz, s) {
       if (!s.links) s.links = [];
       const allowedTypes = Object.entries(biz.brand?.allowedStaffLinks||{}).filter(([,v])=>v).map(([k])=>k);
       const LINK_LABELS = {spotify:"🎵 Spotify",phone:"📞 Phone",email:"✉️ Email",instagram:"📸 Instagram",tiktok:"🎵 TikTok",custom:"🔗 Custom Link"};
-
+ 
       function renderSbLinks() {
         const el = $("sb-links-list"); if (!el) return;
         const links = s.links || [];
@@ -1348,10 +1348,10 @@ function renderStaffDash(el, biz, s) {
             <button onclick='_sbRmLink(${i})' style='background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:7px;padding:4px 8px;font-size:11px;font-weight:700;color:#ff4455;cursor:pointer;font-family:inherit;flex-shrink:0'>✕</button>
           </div>`).join("");
       }
-
+ 
       // Links section is now inline in the HTML above
       renderSbLinks();
-
+ 
       window._sbRmLink = function(i) {
         s.links.splice(i,1);
         biz.staff = biz.staff.map(x=>x.id===s.id?{...x,links:s.links}:x);
@@ -1378,7 +1378,7 @@ function renderStaffDash(el, biz, s) {
         renderSbLinks();
         showToast("Link added! ✓");
       };
-
+ 
       window._sbSave = function() {
         const title   = ($("sb-title")||{}).value?.trim()||"";
         const photo   = window._sbPhotoData !== undefined ? window._sbPhotoData : (s.photo||"");
@@ -1393,7 +1393,7 @@ function renderStaffDash(el, biz, s) {
     }
   };
   _sTab("coaching", el.querySelector(".dash-tab"));
-
+ 
   window._refreshStaffDash = function() {
     const btn = $("staff-refresh-btn");
     if (btn) { btn.style.opacity="0.4"; btn.style.pointerEvents="none"; }
@@ -1405,12 +1405,12 @@ function renderStaffDash(el, biz, s) {
     setTimeout(()=>{ if(btn){btn.style.opacity="";btn.style.pointerEvents="";} }, 1500);
   };
 }
-
+ 
 function goalRowRO(g, isTeam) {
   const pct=Math.min(100,g.target>0?Math.round((g.current/g.target)*100):0), done=pct>=100;
   return `<div class='plain-card' style='margin-bottom:9px'><div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:6px'><div style='font-weight:700;font-size:13px'>${esc(g.title)}${done?" <span style='font-size:10px;color:#00e5a0;background:rgba(0,229,160,.1);border-radius:5px;padding:1px 6px'>Done ✓</span>":""}${isTeam?" <span style='font-size:10px;color:#7c6aff;background:rgba(124,106,255,.1);border-radius:5px;padding:1px 6px'>Team</span>":""}</div><div style='font-size:12px;font-weight:700;color:${done?"#00e5a0":"rgba(238,240,248,.5)"}'>${pct}%</div></div><div style='height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden'><div style='height:100%;width:${pct}%;background:${done?"#00e5a0":"linear-gradient(90deg,#7c6aff,#a78bfa)"};border-radius:3px'></div></div><div style='font-size:10px;color:rgba(238,240,248,.28);margin-top:5px;font-weight:500'>${esc(g.period||"")} · ${g.current}/${g.target} ${esc(g.unit||"")}</div></div>`;
 }
-
+ 
 // ═══════════════════════════════════════════
 // MANAGER DASHBOARD
 // ═══════════════════════════════════════════
@@ -1420,10 +1420,10 @@ function goalRowRO(g, isTeam) {
 // ═══════════════════════════════════════════
 async function renderBizAdminDash(el, biz) {
   const active = biz.staff.filter(s=>s.active);
-
+ 
   el.innerHTML="<div style='display:flex;align-items:center;justify-content:center;min-height:60vh'><div class='ai-loading'><div class='ai-spinner'></div>Loading dashboard…</div></div>";
   await new Promise(r=>setTimeout(r,0));
-
+ 
   const tapsByStaff = {};
   await Promise.all(active.map(async s => {
     const sid = staffUrlSlug(staffParts(s));
@@ -1437,7 +1437,7 @@ async function renderBizAdminDash(el, biz) {
   window.tapsByStaff = tapsByStaff;
   const sd    = active.map(s=>{const st=calcStats(getStaffTaps(s));return `${staffDisplayName(staffParts(s))}: ${st.count} taps, ${st.reviews} reviews, ${st.avgStr}★, score ${st.score}`;}).join("\n");
   const allFb = active.flatMap(s=>calcStats(getStaffTaps(s)).negFb.map(t=>`${staffDisplayName(staffParts(s))}(${t.rating}★): "${t.feedback}"`)).join("\n");
-
+ 
   el.innerHTML=`
     <div class='dash-header'>
       <div>
@@ -1460,7 +1460,7 @@ async function renderBizAdminDash(el, biz) {
       <button class='dash-tab' onclick='_baTab("settings",this)' style='color:#ff6b35'>⚙ Settings</button>
     </div>
     <div class='dash-body' id='babody'></div>`;
-
+ 
   window._baTab=function(tab,btn) {
     document.querySelectorAll("#batabs .dash-tab").forEach(b=>b.classList.remove("active"));
     btn.classList.add("active");
@@ -1475,7 +1475,7 @@ async function renderBizAdminDash(el, biz) {
     else if (tab==="settings")  renderBizAdminSettings(body,biz,getStaffTaps);
   };
   _baTab("ai", el.querySelector(".dash-tab"));
-
+ 
   window._refreshBizAdmin = function() {
     const btn = $("ba-refresh-btn");
     if (btn) { btn.style.opacity="0.4"; btn.style.pointerEvents="none"; }
@@ -1483,29 +1483,29 @@ async function renderBizAdminDash(el, biz) {
     const app = $("app"); if (app) renderBizAdminDash(app, getBiz(biz.slug)||biz);
   };
 }
-
+ 
 function renderBizAdminSettings(body, biz, getStaffTaps) {
   if (!getStaffTaps) getStaffTaps = () => getDemoTaps();
   const bc = biz.brand?.brandColor || "#00e5a0";
   body.innerHTML=`
     <div class='plain-card' style='margin-bottom:12px'>
       <div style='font-weight:700;font-size:13px;margin-bottom:14px;color:#ff6b35'>🏢 Business Access</div>
-
+ 
       <div class='field-lbl'>Store Code (what staff type to log in)</div>
       <div style='display:flex;gap:8px;margin-bottom:14px'>
         <input class='inp' id='bas-code' type='tel' maxlength='4' value='${esc(biz.storeCode||"")}' style='flex:1;text-align:center;font-size:22px;font-weight:900;letter-spacing:.12em'/>
         <button onclick='document.getElementById("bas-code").value=genUniqueCode("${biz.slug}")' style='background:#15171f;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:0 13px;font-size:13px;color:rgba(238,240,248,.5);cursor:pointer;font-family:inherit;flex-shrink:0'>↺ New</button>
       </div>
-
+ 
       <div class='field-lbl'>Manager PIN (current: ${biz.mgrPin})</div>
       <input class='inp' id='bas-mpin' type='tel' maxlength='4' placeholder='New PIN (leave blank to keep)' style='margin-bottom:14px'/>
-
+ 
       <div class='field-lbl'>Your Business Admin PIN</div>
       <input class='inp' id='bas-apin' type='tel' maxlength='4' placeholder='New PIN (leave blank to keep)' style='margin-bottom:16px'/>
-
+ 
       <button onclick='_saveBizAdminSettings()' class='btn btn-primary btn-full'>Save Settings</button>
     </div>
-
+ 
     <div class='plain-card'>
       <div style='font-weight:700;font-size:13px;margin-bottom:10px'>📋 Tap Analytics</div>
       <div style='display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px'>
@@ -1542,7 +1542,7 @@ function renderBizAdminSettings(body, biz, getStaffTaps) {
         </div>`;
       }).join("")}
     </div>`;
-
+ 
   window._saveBizAdminSettings = function() {
     const code = ($("bas-code")||{}).value?.trim()||"";
     const mp   = ($("bas-mpin")||{}).value?.trim()||"";
@@ -1555,10 +1555,10 @@ function renderBizAdminSettings(body, biz, getStaffTaps) {
     showToast("Settings saved!");
   };
 }
-
+ 
 async function renderManagerDash(el, biz) {
   const active = biz.staff.filter(s=>s.active);
-
+ 
   // Load real tap data for all staff from Firebase (or demo fallback)
   const tapsByStaff = {};
   await Promise.all(active.map(async s => {
@@ -1571,17 +1571,17 @@ async function renderManagerDash(el, biz) {
       tapsByStaff[s.id] = await getTaps(biz.slug, s.id);
     }
   }));
-
+ 
   const getStaffTaps = s => tapsByStaff[s.id] || [];
   window.tapsByStaff = tapsByStaff; // expose for _cStaff
   const sd    = active.map(s=>{const st=calcStats(getStaffTaps(s));return `${staffDisplayName(staffParts(s))}: ${st.count} taps, ${st.reviews} reviews, ${st.avgStr}★, score ${st.score}`;}).join("\n");
   const allFb = active.flatMap(s=>calcStats(getStaffTaps(s)).negFb.map(t=>`${staffDisplayName(staffParts(s))}(${t.rating}★): "${t.feedback}"`)).join("\n");
-
+ 
   // Show loading while fetching Firebase data
   el.innerHTML="<div style='display:flex;align-items:center;justify-content:center;min-height:60vh'><div class='ai-loading'><div class='ai-spinner'></div>Loading dashboard…</div></div>";
   // Small delay to let the spinner render before async work
   await new Promise(r=>setTimeout(r,0));
-
+ 
   el.innerHTML=`
     <div class='dash-header'>
       <div><div class='dash-name'>${esc(biz.name)}</div><div class='dash-sub'>Manager Dashboard · Tap+</div></div>
@@ -1599,7 +1599,7 @@ async function renderManagerDash(el, biz) {
       <button class='dash-tab ai' onclick='_mTab("estimator",this)'><span class='ai-mini-dot'></span> Estimator</button>
     </div>
     <div class='dash-body' id='mbody'></div>`;
-
+ 
   window._mTab=function(tab,btn) {
     document.querySelectorAll("#mtabs .dash-tab").forEach(b=>b.classList.remove("active"));
     btn.classList.add("active");
@@ -1613,7 +1613,7 @@ async function renderManagerDash(el, biz) {
     else if (tab==="estimator") renderEstimatorTab(body,active);
   };
   _mTab("ai", el.querySelector(".dash-tab"));
-
+ 
   window._refreshMgrDash = function() {
     const btn = $("mgr-refresh-btn");
     if (btn) { btn.style.opacity="0.4"; btn.style.pointerEvents="none"; }
@@ -1621,13 +1621,13 @@ async function renderManagerDash(el, biz) {
     const app = $("app"); if (app) renderManagerDash($("biz-dash")||app, getBiz(biz.slug)||biz);
   };
 }
-
+ 
 // ─── AI INSIGHTS ───────────────────────────
 function renderAITab(body, active, sd, allFb) {
   const subs=["summary","coaching","feedback","export"];
   const labels={summary:"📋 Summary",coaching:"💬 Coaching",feedback:"🔍 Feedback",export:"📄 Export"};
   body.innerHTML=`<div id='ai-subs' style='display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap'>${subs.map((s,i)=>`<button data-s='${s}' onclick='_aiSub(this.dataset.s)' style='background:${i===0?"#a78bfa":"#15171f"};color:${i===0?"#07080c":"rgba(238,240,248,.5)"};border:1px solid ${i===0?"#a78bfa":"rgba(255,255,255,.08)"};border-radius:9px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit'>${labels[s]}</button>`).join("")}</div><div id='ai-sub-body'></div>`;
-
+ 
   window._aiSub=function(sub) {
     document.querySelectorAll("#ai-subs button").forEach(b=>{const a=b.dataset.s===sub;b.style.background=a?"#a78bfa":"#15171f";b.style.color=a?"#07080c":"rgba(238,240,248,.5)";b.style.borderColor=a?"#a78bfa":"rgba(255,255,255,.08)";});
     const el=$("ai-sub-body"); if(!el) return;
@@ -1651,7 +1651,7 @@ function renderAITab(body, active, sd, allFb) {
   };
   _aiSub("summary");
 }
-
+ 
 window._cStaff=function(sid,pill) {
   document.querySelectorAll(".pill").forEach(p=>p.classList.remove("active"));
   if (pill) pill.classList.add("active");
@@ -1667,10 +1667,10 @@ window._cStaff=function(sid,pill) {
   cc.innerHTML=`<div class='ai-card'><div class='ai-card-head'><div style='width:36px;height:36px;border-radius:50%;background:${s.color}22;color:${s.color};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px'>${staffIni(staffParts(s))}</div><div><div class='ai-card-title'>${esc(s.name)}</div><div class='ai-card-sub'>${st.count} taps · ${st.avgStr}★ · score ${st.score}</div></div></div><div id='aic-${sid}'></div></div>`;
   renderAIBlock("aic-"+sid,p,"mgr_c_"+sid,"Writing…");
 };
-
+ 
 // ─── TEAM TAB ──────────────────────────────
 let _teamSub="leaderboard", _chartMode="bar";
-
+ 
 function renderTeamTab(body, active, getStaffTaps) {
   if (!getStaffTaps) getStaffTaps = () => getDemoTaps();
   body.innerHTML=`<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:14px'><div id='tsubs' style='display:flex;gap:6px;flex-wrap:wrap'>${["leaderboard","analytics"].map((s,i)=>`<button data-ts='${s}' onclick='_tSub(this.dataset.ts)' style='background:${i===0?"#00e5a0":"#15171f"};color:${i===0?"#07080c":"rgba(238,240,248,.5)"};border:1px solid ${i===0?"#00e5a0":"rgba(255,255,255,.08)"};border-radius:9px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit'>${i===0?"🏆 Leaderboard":"📊 Analytics"}</button>`).join("")}</div><button id='team-refresh-btn' onclick='_refreshTeam()' style='background:#15171f;border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:6px 11px;font-size:14px;color:rgba(238,240,248,.5);cursor:pointer;font-family:inherit' title='Refresh'>↻</button></div><div id='tsub-body'></div>`;
@@ -1683,7 +1683,7 @@ function renderTeamTab(body, active, getStaffTaps) {
   };
   _tSub(_teamSub);
 }
-
+ 
 function renderLeaderboard(el, active, getStaffTaps) {
   if (!getStaffTaps) getStaffTaps = () => getDemoTaps();
   const rows=active.map(s=>({s,st:calcStats(getStaffTaps(s))})).sort((a,b)=>b.st.score-a.st.score);
@@ -1694,7 +1694,7 @@ function renderLeaderboard(el, active, getStaffTaps) {
     rows.map((r,i)=>{const s=r.s,st=r.st,p=st.score/maxScore,badge=pl(p),bar=Math.round(p*100),dots=Array.from({length:10},(_,d)=>d<Math.round(p*10)?"●":"○").join("");return`<div class='lb-item ${i<3?"r"+(i+1):""}' style='flex-direction:column;align-items:stretch;gap:10px'><div style='display:flex;align-items:center;gap:12px'><div class='lb-rank'>${["🥇","🥈","🥉"][i]||i+1}</div><div class='lb-av' style='background:${s.color}22;color:${s.color}'>${staffIni(staffParts(s))}</div><div style='flex:1'><div style='display:flex;align-items:center;gap:7px;margin-bottom:2px'><div class='lb-nm'>${esc(staffDisplayName(staffParts(s)))}</div><span style='font-size:16px'>${badge.e}</span><span style='font-size:10px;font-weight:700;color:${badge.c};background:${badge.c}18;border-radius:5px;padding:1px 7px'>${badge.l}</span></div><div class='lb-st'>${st.count} taps · ${st.reviews} reviews · ${st.avgStr}⭐ · CTR ${st.ctr}%</div></div><div class='lb-sc'><div class='lb-sc-val'>${st.score}</div><div class='lb-sc-lbl'>pts</div></div></div><div style='display:flex;align-items:center;gap:8px'><div style='font-size:11px;color:${s.color};letter-spacing:.5px;font-family:monospace;flex:1'>${dots}</div><div style='font-size:10px;color:rgba(238,240,248,.35);font-weight:600'>${bar}%</div></div><div style='height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden'><div style='height:100%;width:${bar}%;background:linear-gradient(90deg,${s.color},${badge.c});border-radius:2px'></div></div></div>`;}).join("")+
     `<div style='margin-top:10px;font-size:11px;color:rgba(238,240,248,.28);font-weight:500'>Score = Taps×10 + Reviews×15 + 5★×5</div>`;
 }
-
+ 
 function renderAnalytics(el, active, getStaffTaps) {
   if (!getStaffTaps) getStaffTaps = () => getDemoTaps();
   const all=active.flatMap(s=>getStaffTaps(s));
@@ -1710,7 +1710,7 @@ function renderAnalytics(el, active, getStaffTaps) {
   el.innerHTML=`<div style='display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px'><button data-cm='bar' onclick='_setChart(this.dataset.cm)' style='${bs(isBar)}'>▬ Bar</button><button data-cm='donut' onclick='_setChart(this.dataset.cm)' style='${bs(!isBar)}'>◉ Donut</button></div><div style='display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:9px'>${[[tot,"Total Taps","#00e5a0"],[revs,"Reviews","#ffd166"],[avg+"⭐","Avg Rating","#ff6b35"],[ctr+"%","CTR","#7c6aff"],[pos,"Positive","#00e5a0"],[neg,"Negative","#ff4455"]].map(([v,l,c])=>`<div style='${cs}'><div style='font-weight:900;font-size:26px;line-height:1;margin-bottom:4px;color:${c};letter-spacing:-.03em'>${v}</div><div style='font-size:11px;color:rgba(238,240,248,.38);font-weight:700'>${l}</div></div>`).join("")}</div><div style='${cs}'><div class='sec-lbl'>Platform</div>${buildPlatChart(gT,yT)}</div><div style='${cs}'><div class='sec-lbl'>Taps Per Staff</div>${buildStaffChart(active,mx,getStaffTaps)}</div>`;
   window._setChart=c=>{_chartMode=c;renderAnalytics(el,active);};
 }
-
+ 
 function buildPlatChart(gT,yT) {
   const segs=[{n:gT,c:"#00e5a0",l:"Google"},{n:yT,c:"#ffd166",l:"Yelp"}];
   if (_chartMode==="donut") {
@@ -1719,7 +1719,7 @@ function buildPlatChart(gT,yT) {
   }
   return segs.map(s=>`<div class='bar-row'><div class='bar-nm'>${s.l}</div><div class='bar-track'><div class='bar-fill' style='width:${gT+yT?Math.round(s.n/(gT+yT)*100):0}%;background:${s.c}'></div></div><div class='bar-v' style='color:${s.c}'>${s.n}</div></div>`).join("");
 }
-
+ 
 function buildStaffChart(active, mx, getStaffTaps) {
   if (!getStaffTaps) getStaffTaps = () => getDemoTaps();
   if (_chartMode==="donut") {
@@ -1729,20 +1729,20 @@ function buildStaffChart(active, mx, getStaffTaps) {
   }
   return active.map(s=>{const n=getStaffTaps(s).length;return`<div class='bar-row'><div class='bar-nm'>${esc(staffParts(s).firstName||s.name)}</div><div class='bar-track'><div class='bar-fill' style='width:${Math.round(n/mx*100)}%;background:${s.color}'></div></div><div class='bar-v' style='color:${s.color}'>${n}</div></div>`;}).join("");
 }
-
+ 
 function buildDonut(segs, size) {
   const r=size*.35,cx=size/2,cy=size/2,sw=size*.18,circ=2*Math.PI*r;
   let off=0;
   const paths=segs.map(seg=>{const dl=seg.pct*circ,gap=circ-dl,p=`<circle cx='${cx}' cy='${cy}' r='${r}' fill='none' stroke='${seg.c}' stroke-width='${sw}' stroke-dasharray='${dl.toFixed(2)} ${gap.toFixed(2)}' stroke-dashoffset='${(-off*circ).toFixed(2)}' stroke-linecap='round' transform='rotate(-90 ${cx} ${cy})'/>`;off+=seg.pct;return p;});
   return `<svg width='${size}' height='${size}' style='flex-shrink:0'><circle cx='${cx}' cy='${cy}' r='${r}' fill='none' stroke='rgba(255,255,255,.06)' stroke-width='${sw}'/>${paths.join("")}</svg>`;
 }
-
+ 
 // ─── STAFF MGMT ────────────────────────────
 function renderStaffMgmt(body, biz) {
   body.innerHTML=`<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:12px'><div class='sec-lbl' style='margin-bottom:0'>Staff (${biz.staff.length})</div><div style='display:flex;gap:7px'><button onclick='_chgMgrPin()' class='btn btn-ghost btn-sm'>🔒 PIN</button><button onclick='_addStaff()' class='btn btn-primary btn-sm'>+ Add</button></div></div><div id='slist'></div>`;
   renderSList(biz);
 }
-
+ 
 function renderSList(biz) {
   const el=$("slist"); if(!el) return;
   const base=window.location.origin+"/"+biz.slug+"/tap/";
@@ -1768,7 +1768,7 @@ function renderSList(biz) {
       <div style='margin-top:8px;padding:7px 9px;background:#15171f;border-radius:8px;font-size:11px;color:#00e5a0;word-break:break-all;font-weight:500'>${tapUrl}</div>
     </div>`;
   }).join("");
-
+ 
   window._previewStaffUrl=function() {
     const fn=($("ns-fn")||$("es-fn")||{}).value?.trim()||"";
     const li=($("ns-li")||$("es-li")||{}).value?.trim().slice(0,1)||"";
@@ -1870,7 +1870,7 @@ function renderSList(biz) {
   };
 ;
 }
-
+ 
 // ─── LINKS TAB ─────────────────────────────
 function renderLinksTab(body, biz) {
   body.innerHTML=`<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:12px'><div class='sec-lbl' style='margin-bottom:0'>Review Links</div><button onclick='_addLink()' class='btn btn-primary btn-sm'>+ Add</button></div><div style='background:#15171f;border-radius:9px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:rgba(238,240,248,.38);line-height:1.6;font-weight:500'>5★ auto-redirects to first active link. 4★ shows all.</div><div id='llist'></div>`;
@@ -1891,7 +1891,7 @@ function renderLList(biz) {
     window._saveEditLink=lid=>{const icon=($("el-i")||{}).value?.trim()||"🔗",label=($("el-l")||{}).value?.trim()||"",url=($("el-u")||{}).value?.trim()||"";if(!label||!url){showToast("Label and URL required");return;}biz.links=biz.links.map(l=>l.id===lid?{...l,icon,label,url}:l);saveBiz(biz);closeModal();renderLList(biz);};
   };
 }
-
+ 
 // ─── GOALS TAB ─────────────────────────────
 function renderGoalsTab(body, biz) {
   body.innerHTML=`<div id='gsubs' style='display:flex;gap:6px;margin-bottom:14px'><button data-gs='team' onclick='_gSub(this.dataset.gs)' style='background:#00e5a0;color:#07080c;border:1px solid #00e5a0;border-radius:9px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit'>Team Goals</button><button data-gs='ind' onclick='_gSub(this.dataset.gs)' style='background:#15171f;color:rgba(238,240,248,.5);border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit'>Individual Goals</button></div><div id='gsub-body'></div>`;
@@ -1914,19 +1914,19 @@ function renderGoalsTab(body, biz) {
     }
   };
   _gSub("team");
-
+ 
   window._addGoal=function(type,sid) {
     showModal(`<div class='modal-head'><div class='modal-title'>Add Goal</div><button class='modal-close' onclick='closeModal()'>×</button></div><div style='display:flex;flex-direction:column;gap:10px'><div><div class='field-lbl'>Title</div><input class='inp' id='g-t' placeholder='e.g. Hit 20 reviews this week'/></div><div><div class='field-lbl'>Note (optional)</div><input class='inp' id='g-n' placeholder='Focus on Google reviews'/></div><div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px'><div><div class='field-lbl'>Target</div><input class='inp' id='g-tg' type='number' placeholder='20' min='1'/></div><div><div class='field-lbl'>Current</div><input class='inp' id='g-c' type='number' placeholder='0' value='0' min='0'/></div><div><div class='field-lbl'>Unit</div><input class='inp' id='g-u' placeholder='reviews'/></div></div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px'><div><div class='field-lbl'>Period</div><select class='sel' id='g-p'><option>This week</option><option>This month</option><option>Ongoing</option></select></div><div><div class='field-lbl'>Deadline</div><input class='inp' id='g-d' type='date'/></div></div><button class='btn btn-primary btn-full' onclick='_saveGoal("${type}","${sid||""}")'>Add Goal</button></div>`);
     window._saveGoal=function(type2,sid2){const title=($("g-t")||{}).value?.trim()||"",target=parseInt(($("g-tg")||{}).value)||0;if(!title||!target){showToast("Title and target required");return;}const goal={id:uid(),title,note:($("g-n")||{}).value?.trim()||"",target,current:parseInt(($("g-c")||{}).value)||0,unit:($("g-u")||{}).value?.trim()||"",period:($("g-p")||{}).value||"This week",deadline:($("g-d")||{}).value?.trim()||"",createdAt:Date.now()};if(type2==="team"){biz.teamGoals=biz.teamGoals||[];biz.teamGoals.push(goal);}else{biz.staffGoals=biz.staffGoals||{};if(!biz.staffGoals[sid2])biz.staffGoals[sid2]=[];biz.staffGoals[sid2].push(goal);}saveBiz(biz);closeModal();_gSub(type2==="team"?"team":"ind");showToast("Goal added!");};
   };
 }
-
+ 
 function goalRowMgr(g, type, sid, biz) {
   const pct=Math.min(100,g.target>0?Math.round((g.current/g.target)*100):0),done=pct>=100;
   const sidP=sid?`"${sid}"`:null;
   return `<div class='plain-card' style='margin-bottom:9px'><div style='display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px'><div style='flex:1'><div style='font-weight:700;font-size:13px;margin-bottom:3px'>${esc(g.title)}${done?" <span style='font-size:10px;color:#00e5a0;background:rgba(0,229,160,.1);border-radius:5px;padding:1px 6px'>Done ✓</span>":""}</div>${g.note?`<div style='font-size:11px;color:rgba(238,240,248,.38);font-weight:500;margin-bottom:5px'>${esc(g.note)}</div>`:""}<div style='display:flex;align-items:center;gap:8px'><div style='flex:1;height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden'><div style='height:100%;width:${pct}%;background:${done?"#00e5a0":"#7c6aff"};border-radius:3px'></div></div><div style='font-size:11px;font-weight:700;color:${done?"#00e5a0":"rgba(238,240,248,.5)"};flex-shrink:0'>${g.current}/${g.target} ${esc(g.unit||"")}</div></div></div><div style='display:flex;gap:5px;flex-shrink:0'><button onclick='_updGoal("${g.id}","${type}",${sidP})' class='btn btn-ghost btn-sm'>Update</button><button onclick='_delGoal("${g.id}","${type}",${sidP})' class='btn btn-danger btn-sm'>✕</button></div></div><div style='font-size:10px;color:rgba(238,240,248,.25);font-weight:500'>${esc(g.period||"")}${g.deadline?" · Due: "+esc(g.deadline):""}</div></div>`;
 }
-
+ 
 window._updGoal=function(gid,type,sid) {
   const parts=window.location.pathname.split("/").filter(Boolean);const biz=getBiz(parts[0]);if(!biz)return;
   const goals=type==="team"?biz.teamGoals:(biz.staffGoals&&biz.staffGoals[sid])||[];
@@ -1941,7 +1941,7 @@ window._delGoal=function(gid,type,sid) {
   else{biz.staffGoals[sid]=(biz.staffGoals[sid]||[]).filter(g=>g.id!==gid);}
   saveBiz(biz);showToast("Goal removed");
 };
-
+ 
 // ─── BRANDING TAB ──────────────────────────
 function renderBrandingTab(body, biz) {
   const b={...DEFAULT_BRAND,...(biz.brand||{})};
@@ -1973,7 +1973,7 @@ function renderBrandingTab(body, biz) {
     }).join("")}
   </div>`;
   window._brLogoData = null;
-
+ 
   // Render bulletin links list
   function renderBulletinList() {
     const el = $("br-bulletin-list"); if (!el) return;
@@ -1988,7 +1988,7 @@ function renderBrandingTab(body, biz) {
         <button onclick='_rmBulletinLink(${i})' style='background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:7px;padding:4px 8px;font-size:11px;font-weight:700;color:#ff4455;cursor:pointer;font-family:inherit;flex-shrink:0'>✕</button>
       </div>`).join("");
   }
-
+ 
   window._toggleAllowed = function(type) {
     if (!b.allowedStaffLinks) b.allowedStaffLinks = {};
     b.allowedStaffLinks[type] = !b.allowedStaffLinks[type];
@@ -2000,7 +2000,7 @@ function renderBrandingTab(body, biz) {
     biz.brand = {...biz.brand, allowedStaffLinks: b.allowedStaffLinks};
     saveBiz(biz);
   };
-
+ 
   window._rmBulletinLink = function(i) {
     b.bulletinLinks = (b.bulletinLinks||[]).filter((_,idx)=>idx!==i);
     biz.brand = {...biz.brand, bulletinLinks: b.bulletinLinks};
@@ -2008,7 +2008,7 @@ function renderBrandingTab(body, biz) {
     renderBulletinList();
     showToast("Removed");
   };
-
+ 
   window._addBulletinLink = function() {
     showModal(`<div class='modal-head'><div class='modal-title'>Add to Bulletin Board</div><button class='modal-close' onclick='closeModal()'>×</button></div>
       <div style='display:flex;flex-direction:column;gap:11px'>
@@ -2061,11 +2061,11 @@ function renderBrandingTab(body, biz) {
       renderBulletinList();
     };
   };
-
+ 
   // Render existing bulletin links
   setTimeout(renderBulletinList, 0);
-
-
+ 
+ 
   window._brPickLogo = async function() {
     const r = await pickPhoto(); if (!r) return;
     window._brLogoData = r.dataUrl;
@@ -2077,7 +2077,7 @@ function renderBrandingTab(body, biz) {
     const prev = $("br-logo-preview"); if (!prev) return;
     if (!url) return;
     window._brLogoData = null;
-
+ 
   // Render bulletin links list
   function renderBulletinList() {
     const el = $("br-bulletin-list"); if (!el) return;
@@ -2092,7 +2092,7 @@ function renderBrandingTab(body, biz) {
         <button onclick='_rmBulletinLink(${i})' style='background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:7px;padding:4px 8px;font-size:11px;font-weight:700;color:#ff4455;cursor:pointer;font-family:inherit;flex-shrink:0'>✕</button>
       </div>`).join("");
   }
-
+ 
   window._toggleAllowed = function(type) {
     if (!b.allowedStaffLinks) b.allowedStaffLinks = {};
     b.allowedStaffLinks[type] = !b.allowedStaffLinks[type];
@@ -2104,7 +2104,7 @@ function renderBrandingTab(body, biz) {
     biz.brand = {...biz.brand, allowedStaffLinks: b.allowedStaffLinks};
     saveBiz(biz);
   };
-
+ 
   window._rmBulletinLink = function(i) {
     b.bulletinLinks = (b.bulletinLinks||[]).filter((_,idx)=>idx!==i);
     biz.brand = {...biz.brand, bulletinLinks: b.bulletinLinks};
@@ -2112,7 +2112,7 @@ function renderBrandingTab(body, biz) {
     renderBulletinList();
     showToast("Removed");
   };
-
+ 
   window._addBulletinLink = function() {
     showModal(`<div class='modal-head'><div class='modal-title'>Add to Bulletin Board</div><button class='modal-close' onclick='closeModal()'>×</button></div>
       <div style='display:flex;flex-direction:column;gap:11px'>
@@ -2165,11 +2165,11 @@ function renderBrandingTab(body, biz) {
       renderBulletinList();
     };
   };
-
+ 
   // Render existing bulletin links
   setTimeout(renderBulletinList, 0);
-
-
+ 
+ 
     prev.innerHTML = `<img src='${esc(url)}' style='width:100%;height:100%;object-fit:contain;padding:4px' onerror='this.style.display="none"'/>`;
   };
   window._saveBrand=()=>{
@@ -2196,9 +2196,9 @@ function renderBrandingTab(body, biz) {
     if (!url) { prev.innerHTML = ""; return; }
     prev.innerHTML = `<img src='${esc(url)}' style='height:52px;max-width:160px;object-fit:contain;border-radius:8px;border:1px solid rgba(255,255,255,.08);padding:6px;background:#0e0f15' onerror='this.style.display="none"'/>`;
   };
-
+ 
 }
-
+ 
 // ─── ESTIMATOR ─────────────────────────────
 function renderEstimatorTab(body, active, getStaffTaps) {
   if (!getStaffTaps) getStaffTaps = () => getDemoTaps();
@@ -2215,7 +2215,7 @@ function renderEstimatorTab(body, active, getStaffTaps) {
     renderAIBlock("ai-est",p,"est_"+plat+"_"+cur+"_"+tgt,"Predicting…");
   };
 }
-
+ 
 // ─── INIT ──────────────────────────────────
 window.addEventListener("popstate", route);
 if (document.readyState==="loading") document.addEventListener("DOMContentLoaded", route);
