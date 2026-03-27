@@ -29,7 +29,7 @@ const DEFAULT_LINKS = [
   {id:"gl",label:"Google",icon:"🔍",url:"https://search.google.com/local/writereview?placeid=YOUR_ID",active:true},
   {id:"yl",label:"Yelp",icon:"⭐",url:"https://www.yelp.com/writeareview/biz/YOUR_ID",active:false}
 ];
-const DEFAULT_STAFF = [{id:"s1",firstName:"Staff",lastInitial:"M",color:"#00e5a0",passcode:"1234",active:true}];
+const DEFAULT_STAFF = [{id:"s1",firstName:"Staff",lastInitial:"M",color:"#00e5a0",passcode:"1234",active:true,title:"",photo:"",spotify:""}];
 
 // ─── HELPERS ───────────────────────────────
 const $      = id => document.getElementById(id);
@@ -151,6 +151,24 @@ function clearTapCache(bizSlug) {
 function getSheetsUrl() { return ""; } // legacy stub — not used
 function getFbCfg()     { return null; }
 function resetFbToken() {}
+
+// ─── PHOTO HELPERS ─────────────────────────
+// Open device file picker, return { file, dataUrl }
+function pickPhoto() {
+  return new Promise(resolve => {
+    const inp   = document.createElement('input');
+    inp.type    = 'file';
+    inp.accept  = 'image/*';
+    inp.onchange = e => {
+      const file = e.target.files[0];
+      if (!file) { resolve(null); return; }
+      const reader = new FileReader();
+      reader.onload = ev => resolve({ file, dataUrl: ev.target.result });
+      reader.readAsDataURL(file);
+    };
+    inp.click();
+  });
+}
 
 // ─── GROQ AI ───────────────────────────────
 let _aiCache = {};
@@ -807,15 +825,52 @@ function renderCustomerPage(app, biz, staffId) {
   document.body.style.background = b.bgColor;
   document.body.style.backgroundImage = "none";
 
-  const logo = b.logoUrl
-    ? `<img src='${esc(b.logoUrl)}' alt='${esc(b.name)}' style='height:68px;max-width:220px;object-fit:contain;margin-bottom:20px;border-radius:10px'/>`
-    : `<div style='font-weight:900;font-size:28px;letter-spacing:-.03em;color:${b.textColor};margin-bottom:20px'>${esc(b.name)}</div>`;
+  // Staff profile extras
+  const staffTitle   = staffRec?.title   || "";
+  const staffPhoto   = staffRec?.photo   || "";
+  const staffSpotify = staffRec?.spotify || "";
+
+  // Parse Spotify embed URL
+  function spotifyEmbedUrl(link) {
+    if (!link) return "";
+    const m = link.match(/spotify\.com\/(track|playlist|album|episode)\/([a-zA-Z0-9]+)/);
+    return m ? `https://open.spotify.com/embed/${m[1]}/${m[2]}?utm_source=generator&theme=0&autoplay=1` : "";
+  }
+  const spotifyEmbed = spotifyEmbedUrl(staffSpotify);
+
+  // Logo — top center, rounded rectangle
+  const logoBlock = b.logoUrl
+    ? `<img src='${esc(b.logoUrl)}' alt='${esc(b.name)}' style='height:72px;max-width:200px;object-fit:contain;border-radius:14px;margin-bottom:14px'/>`
+    : `<div style='font-weight:900;font-size:26px;letter-spacing:-.03em;color:${b.textColor};margin-bottom:14px'>${esc(b.name)}</div>`;
+
+  // Staff bubble — top right corner, tappable circle
+  const staffBubble = staffRec ? `
+    <div id="staff-bubble" onclick="_toggleStaffCard()" style="position:absolute;top:14px;right:14px;cursor:pointer;z-index:10">
+      ${staffPhoto
+        ? `<img src="${esc(staffPhoto)}" style="width:50px;height:50px;border-radius:50%;object-fit:cover;border:2px solid ${b.brandColor}"/>`
+        : `<div style="width:50px;height:50px;border-radius:50%;background:${b.brandColor}22;border:2px solid ${b.brandColor};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;color:${b.brandColor}">${staffIni(staffParts(staffRec))}</div>`
+      }
+    </div>
+    <div id="staff-card" style="display:none;position:absolute;top:72px;right:14px;background:#0e0f15;border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:12px 16px;min-width:130px;z-index:20;text-align:left">
+      <div style="font-weight:800;font-size:13px">${esc(staffDisplayName(staffParts(staffRec)))}</div>
+      ${staffTitle ? `<div style="font-size:11px;color:${b.brandColor};font-weight:600;margin-top:2px">${esc(staffTitle)}</div>` : ""}
+    </div>` : "";
+
+  // Spotify embed block
+  const spotifyBlock = spotifyEmbed ? `
+    <div style="width:100%;max-width:340px;margin-bottom:16px;border-radius:14px;overflow:hidden">
+      <iframe src="${esc(spotifyEmbed)}" width="100%" height="80" frameborder="0"
+        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+        loading="lazy" style="border-radius:14px;display:block"></iframe>
+    </div>` : "";
 
   app.innerHTML = `
     <div style='position:fixed;top:0;left:0;right:0;text-align:center;padding:9px;font-size:9px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:rgba(255,255,255,.16);z-index:100;pointer-events:none'>POWERED BY TAP+</div>
     <div style='position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;width:100%;max-width:400px;margin:0 auto;padding:52px 24px 40px;text-align:center'>
-      ${logo}
-      ${b.tagline?`<div style='font-size:13px;font-weight:500;color:${b.textColor};opacity:.5;margin-bottom:30px;line-height:1.55'>${esc(b.tagline)}</div>`:`<div style='margin-bottom:24px'></div>`}
+      ${staffBubble}
+      ${logoBlock}
+      ${b.tagline?`<div style='font-size:13px;font-weight:500;color:${b.textColor};opacity:.5;margin-bottom:18px;line-height:1.55'>${esc(b.tagline)}</div>`:`<div style='margin-bottom:10px'></div>`}
+      ${spotifyBlock}
       <div style='font-size:19px;font-weight:800;color:${b.textColor};margin-bottom:6px;letter-spacing:-.02em'>${esc(b.ratingQuestion)}</div>
       <div style='font-size:12px;color:${b.textColor};opacity:.35;margin-bottom:22px;font-weight:500'>Tap a star below</div>
       <div style='display:flex;gap:10px;justify-content:center;margin-bottom:20px'>
@@ -824,6 +879,17 @@ function renderCustomerPage(app, biz, staffId) {
       <div id='cust-after' style='width:100%'></div>
     </div>
     <div style='position:fixed;bottom:10px;left:0;right:0;text-align:center;font-size:9px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.1);pointer-events:none'>TAP+</div>`;
+
+  window._toggleStaffCard = function() {
+    const card = document.getElementById("staff-card");
+    if (card) card.style.display = card.style.display === "none" ? "block" : "none";
+  };
+  document.addEventListener("click", function(e) {
+    const bubble = document.getElementById("staff-bubble");
+    const card   = document.getElementById("staff-card");
+    if (card && bubble && !bubble.contains(e.target) && !card.contains(e.target))
+      card.style.display = "none";
+  });
 
   window._cStar = function(r) {
     rating = r;
@@ -847,14 +913,27 @@ function renderCustomerPage(app, biz, staffId) {
     }
 
     if (r>0) {
-      after.innerHTML=`<div style='font-size:13px;font-weight:600;color:${b.textColor};opacity:.55;margin-bottom:12px'>${esc(b.lowRatingMsg)}</div><textarea id='cust-fb' placeholder='What happened? (optional)' rows='4' style='width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px 13px;color:${b.textColor};font-size:14px;resize:none;outline:none;font-family:inherit;line-height:1.5'></textarea><button onclick='_cSubmit()' style='width:100%;margin-top:10px;padding:14px;background:${b.brandColor};color:#07080c;border:none;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit'>Submit</button>`;
+      after.innerHTML=`
+        <div style='font-size:13px;font-weight:600;color:${b.textColor};opacity:.55;margin-bottom:12px'>${esc(b.lowRatingMsg)}</div>
+        <textarea id='cust-fb' placeholder='What happened? (optional)' rows='4' style='width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px 13px;color:${b.textColor};font-size:14px;resize:none;outline:none;font-family:inherit;line-height:1.5'></textarea>
+        <div id='fb-photo-preview' style='margin-top:8px'></div>
+        <button onclick='_pickFbPhoto()' style='width:100%;margin-top:8px;padding:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;font-size:13px;font-weight:700;color:${b.textColor};cursor:pointer;font-family:inherit'>📷 Add Photo (optional)</button>
+        <button onclick='_cSubmit()' style='width:100%;margin-top:8px;padding:14px;background:${b.brandColor};color:#07080c;border:none;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit'>Submit</button>`;
+      window._fbPhotoData = null;
+      window._pickFbPhoto = async function() {
+        const r = await pickPhoto(); if (!r) return;
+        window._fbPhotoData = r.dataUrl;
+        const prev = document.getElementById('fb-photo-preview'); if (!prev) return;
+        prev.innerHTML = `<div style='position:relative'><img src='${r.dataUrl}' style='width:100%;max-height:180px;object-fit:cover;border-radius:10px;border:1px solid rgba(255,255,255,.12)'/><button onclick='window._fbPhotoData=null;document.getElementById("fb-photo-preview").innerHTML=""' style='position:absolute;top:6px;right:6px;background:rgba(0,0,0,.65);border:none;border-radius:50%;width:26px;height:26px;color:#fff;font-size:15px;cursor:pointer;line-height:26px;text-align:center'>×</button></div>`;
+      };
     }
   };
 
   window._cDone   = () => app.innerHTML=tyScreen(b);
   window._cSubmit = () => {
-    const fb=($("cust-fb")||{}).value||"";
-    saveTap({id:tapId,ts:tapTs,bizSlug:biz.slug,staffId:staffId||"general",staffName,rating,platform:null,review:false,feedback:fb,redirected:false,status:"rated"});
+    const fb    = ($("cust-fb")||{}).value||"";
+    const photo = window._fbPhotoData || null;
+    saveTap({id:tapId,ts:tapTs,bizSlug:biz.slug,staffId:staffId||"general",staffName,rating,platform:null,review:false,feedback:fb,feedbackPhoto:photo,redirected:false,status:"rated"});
     app.innerHTML=tyScreen(b);
   };
 }
@@ -935,6 +1014,7 @@ function renderStaffDash(el, biz, s) {
       <button class='dash-tab ai' onclick='_sTab("feedback",this)'><span class='ai-mini-dot'></span> My Feedback</button>
       <button class='dash-tab' onclick='_sTab("goals",this)'>My Goals</button>
       <button class='dash-tab' onclick='_sTab("stats",this)'>My Stats</button>
+      <button class='dash-tab' onclick='_sTab("branding",this)'>✨ My Branding</button>
     </div>
     <div class='dash-body' id='sbody'></div>`;
 
@@ -976,6 +1056,49 @@ function renderStaffDash(el, biz, s) {
       body.innerHTML=(tG.length?"<div class='sec-lbl'>Team Goals</div>"+tG.map(g=>goalRowRO(g,true)).join(""):"")+
         (sG.length?"<div class='sec-lbl' style='margin-top:14px'>Your Goals</div>"+sG.map(g=>goalRowRO(g,false)).join(""):"")  +
         (!tG.length&&!sG.length?"<div style='text-align:center;padding:40px 20px;color:rgba(238,240,248,.38);font-size:13px;font-weight:500'>🎯<br><br>No goals set yet.</div>":"");
+    }
+    else if (tab==="branding") {
+      const sp = staffParts(s);
+      body.innerHTML=`
+        <div class='plain-card' style='margin-bottom:12px'>
+          <div style='font-weight:700;font-size:13px;margin-bottom:14px'>✨ My Tap Page</div>
+          <div class='field-lbl'>Profile Photo</div>
+          <div style='display:flex;align-items:center;gap:12px;margin-bottom:14px'>
+            <div id='sb-photo-av' style='width:64px;height:64px;border-radius:50%;background:${s.color}22;border:2px solid ${s.color};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;color:${s.color};flex-shrink:0;overflow:hidden'>
+              ${s.photo?`<img src='${s.photo}' style='width:100%;height:100%;object-fit:cover'/>`:`${staffIni(sp)}`}
+            </div>
+            <div style='flex:1;display:flex;flex-direction:column;gap:7px'>
+              <button onclick='_sbPickPhoto()' style='padding:9px 14px;background:#15171f;border:1px solid rgba(255,255,255,.1);border-radius:10px;font-size:12px;font-weight:700;color:rgba(238,240,248,.6);cursor:pointer;font-family:inherit;text-align:left'>📷 Upload from device</button>
+              ${s.photo?`<button onclick='_sbRemovePhoto()' style='padding:9px 14px;background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:10px;font-size:12px;font-weight:700;color:#ff4455;cursor:pointer;font-family:inherit;text-align:left'>✕ Remove photo</button>`:""}
+            </div>
+          </div>
+          <div class='field-lbl'>My Title</div>
+          <input class='inp' id='sb-title' value='${esc(s.title||"")}' placeholder='e.g. Server, Bartender, Host' style='margin-bottom:14px'/>
+          <div class='field-lbl'>Theme Song</div>
+          <input class='inp' id='sb-spotify' value='${esc(s.spotify||"")}' placeholder='https://open.spotify.com/track/…' style='margin-bottom:6px'/>
+          <div style='font-size:11px;color:rgba(238,240,248,.35);margin-bottom:14px;font-weight:500'>Paste any Spotify track, playlist, or album link. It auto-plays when customers tap your card.</div>
+          <button onclick='_sbSave()' class='btn btn-primary btn-full'>Save My Branding</button>
+        </div>`;
+
+      window._sbPickPhoto = async function() {
+        const r = await pickPhoto(); if (!r) return;
+        const av = $("sb-photo-av"); if (av) av.innerHTML=`<img src='${r.dataUrl}' style='width:100%;height:100%;object-fit:cover'/>`;
+        window._sbPhotoData = r.dataUrl;
+      };
+      window._sbRemovePhoto = function() {
+        window._sbPhotoData = "";
+        const av = $("sb-photo-av"); if (av) av.innerHTML = staffIni(staffParts(s));
+      };
+      window._sbPhotoData = undefined; // undefined = unchanged
+      window._sbSave = function() {
+        const title   = ($("sb-title")||{}).value?.trim()||"";
+        const spotify = ($("sb-spotify")||{}).value?.trim()||"";
+        const photo   = window._sbPhotoData !== undefined ? window._sbPhotoData : (s.photo||"");
+        biz.staff = biz.staff.map(x => x.id===s.id ? {...x, title, spotify, photo} : x);
+        s.title=title; s.spotify=spotify; s.photo=photo;
+        saveBiz(biz);
+        showToast("Branding saved! ✨");
+      };
     }
     else {
       body.innerHTML=`<div class='stat-grid'>${[[st.count,"Taps",s.color],[st.reviews,"Reviews","#ffd166"],[st.avgStr,"Avg ★","#ff6b35"],[st.ctr+"%","CTR","#7c6aff"],[st.weekTaps,"This Week","#00e5a0"],[st.score,"Score","#ffd166"]].map(([v,l,c])=>`<div class='stat-box'><div class='stat-val' style='color:${c}'>${v}</div><div class='stat-lbl'>${l}</div></div>`).join("")}</div><div class='sec-lbl'>Recent Taps</div>`+taps.slice(0,6).map(t=>`<div style='display:flex;align-items:flex-start;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06);gap:9px'><div style='width:6px;height:6px;border-radius:50%;background:${(t.rating||0)<=3?"#ff4455":"#00e5a0"};flex-shrink:0;margin-top:4px'></div><div style='flex:1'><div style='font-size:12px;font-weight:600'>${"⭐".repeat(t.rating||0)}${t.review?"<span style='font-size:10px;background:rgba(0,229,160,.1);color:#00e5a0;border-radius:5px;padding:1px 6px;margin-left:5px'>REVIEW</span>":""}</div><div style='font-size:11px;color:rgba(238,240,248,.38);margin-top:2px;font-weight:500'>${fmt(t.ts)}</div></div></div>`).join("");
@@ -1374,54 +1497,86 @@ function renderSList(biz) {
     window._saveMPin=()=>{const p1=($("mp1")||{}).value||"",p2=($("mp2")||{}).value||"",err=$("mp-err");if(!/^\d{4}$/.test(p1)){if(err)err.textContent="Must be 4 digits";return;}if(p1!==p2){if(err)err.textContent="PINs don't match";return;}biz.mgrPin=p1;saveBiz(biz);closeModal();showToast("PIN updated!");};
   };
   window._addStaff=()=>{
-    window._selC=COLORS[0];
+    window._selC=COLORS[0]; window._nsPhoto=null;
     showModal(`<div class='modal-head'><div class='modal-title'>Add Staff</div><button class='modal-close' onclick='closeModal()'>×</button></div><div style='display:flex;flex-direction:column;gap:11px'>
       <div style='display:grid;grid-template-columns:1fr 80px;gap:8px'>
-        <div><div class='field-lbl'>First Name</div><input class='inp' id='ns-fn' placeholder='Alisha' oninput='_previewStaffUrl()'/>  </div>
+        <div><div class='field-lbl'>First Name</div><input class='inp' id='ns-fn' placeholder='Alisha' oninput='_previewStaffUrl()'/></div>
         <div><div class='field-lbl'>Last Initial</div><input class='inp' id='ns-li' placeholder='S' maxlength='1' style='text-align:center;text-transform:uppercase;font-size:18px;font-weight:800' oninput='this.value=this.value.toUpperCase();_previewStaffUrl()'/></div>
       </div>
       <div id='ns-url-preview' style='font-size:11px;color:#00e5a0;font-weight:600;min-height:14px'></div>
+      <div><div class='field-lbl'>Title (optional)</div><input class='inp' id='ns-title' placeholder='e.g. Server, Bartender'/></div>
+      <div><div class='field-lbl'>Profile Photo</div>
+        <div style='display:flex;align-items:center;gap:10px;margin-top:4px'>
+          <div id='ns-photo-av' style='width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.06);border:1px dashed rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;overflow:hidden'>👤</div>
+          <button onclick='_pickNsPhoto()' style='flex:1;padding:9px;background:#15171f;border:1px solid rgba(255,255,255,.1);border-radius:10px;font-size:12px;font-weight:700;color:rgba(238,240,248,.6);cursor:pointer;font-family:inherit'>📷 Upload Photo</button>
+        </div>
+      </div>
+      <div><div class='field-lbl'>Spotify Link (optional)</div><input class='inp' id='ns-spotify' placeholder='https://open.spotify.com/track/…'/></div>
       <div><div class='field-lbl'>4-Digit Passcode</div><input class='inp' id='ns-p' type='tel' maxlength='4'/><div id='ns-err' style='color:#ff4455;font-size:12px;margin-top:4px;min-height:14px;font-weight:500'></div></div>
       <div><div class='field-lbl'>Color</div><div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:4px'>${COLORS.map((c,i)=>`<div data-c='${c}' onclick='_pC(this)' style='width:27px;height:27px;border-radius:50%;background:${c};cursor:pointer;outline:${i===0?"3px solid rgba(255,255,255,.8)":"none"};outline-offset:2px'></div>`).join("")}</div></div>
       <button class='btn btn-primary btn-full' onclick='_saveStaff()'>Add</button>
     </div>`);
     window._pC=el=>{window._selC=el.dataset.c;document.querySelectorAll("[data-c]").forEach(d=>d.style.outline="none");el.style.outline="3px solid rgba(255,255,255,.8)";el.style.outlineOffset="2px";};
+    window._pickNsPhoto=async()=>{
+      const r=await pickPhoto(); if(!r) return;
+      window._nsPhoto=r.dataUrl;
+      const av=$("ns-photo-av"); if(av) av.innerHTML=`<img src='${r.dataUrl}' style='width:100%;height:100%;object-fit:cover'/>`;
+    };
     window._saveStaff=()=>{
       const fn=($("ns-fn")||{}).value?.trim()||"";
       const li=($("ns-li")||{}).value?.trim().slice(0,1).toUpperCase()||"";
       const p =($("ns-p") ||{}).value?.trim()||"";
+      const title=($("ns-title")||{}).value?.trim()||"";
+      const spotify=($("ns-spotify")||{}).value?.trim()||"";
       const err=$("ns-err");
       if(!fn){if(err)err.textContent="First name required";return;}
       if(!/^\d{4}$/.test(p)){if(err)err.textContent="Must be 4 digits";return;}
       if(biz.staff.find(s=>s.passcode===p)){if(err)err.textContent="Passcode in use";return;}
-      biz.staff.push({id:uid(),firstName:fn,lastInitial:li,color:window._selC||COLORS[0],passcode:p,active:true});
+      biz.staff.push({id:uid(),firstName:fn,lastInitial:li,color:window._selC||COLORS[0],passcode:p,active:true,title,photo:window._nsPhoto||"",spotify});
       saveBiz(biz);closeModal();renderSList(biz);showToast("Staff added!");
     };
   };
   window._editStaff=sid=>{
     const s=biz.staff.find(x=>x.id===sid);if(!s)return;
     const sp=staffParts(s);
-    window._selC=s.color;
+    window._selC=s.color; window._esPhoto=s.photo||null;
+    const photoThumb=s.photo?`<img src='${s.photo}' style='width:100%;height:100%;object-fit:cover'/>`:"👤";
     showModal(`<div class='modal-head'><div class='modal-title'>Edit: ${esc(staffDisplayName(sp))}</div><button class='modal-close' onclick='closeModal()'>×</button></div><div style='display:flex;flex-direction:column;gap:11px'>
       <div style='display:grid;grid-template-columns:1fr 80px;gap:8px'>
-        <div><div class='field-lbl'>First Name</div><input class='inp' id='es-fn' value='${esc(sp.firstName)}' oninput='_previewStaffUrl()'/>  </div>
+        <div><div class='field-lbl'>First Name</div><input class='inp' id='es-fn' value='${esc(sp.firstName)}' oninput='_previewStaffUrl()'/></div>
         <div><div class='field-lbl'>Last Initial</div><input class='inp' id='es-li' value='${esc(sp.lastInitial||"")}' maxlength='1' style='text-align:center;text-transform:uppercase;font-size:18px;font-weight:800' oninput='this.value=this.value.toUpperCase();_previewStaffUrl()'/></div>
       </div>
       <div id='ns-url-preview' style='font-size:11px;color:#00e5a0;font-weight:600;min-height:14px'></div>
+      <div><div class='field-lbl'>Title</div><input class='inp' id='es-title' value='${esc(s.title||"")}' placeholder='e.g. Server, Bartender'/></div>
+      <div><div class='field-lbl'>Profile Photo</div>
+        <div style='display:flex;align-items:center;gap:10px;margin-top:4px'>
+          <div id='es-photo-av' style='width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.06);border:1px dashed rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;overflow:hidden'>${photoThumb}</div>
+          <button onclick='_pickEsPhoto()' style='flex:1;padding:9px;background:#15171f;border:1px solid rgba(255,255,255,.1);border-radius:10px;font-size:12px;font-weight:700;color:rgba(238,240,248,.6);cursor:pointer;font-family:inherit'>📷 Change Photo</button>
+          ${s.photo?`<button onclick='window._esPhoto=null;document.getElementById("es-photo-av").innerHTML="👤"' style='padding:9px;background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:10px;font-size:12px;font-weight:700;color:#ff4455;cursor:pointer;font-family:inherit'>✕</button>`:""}
+        </div>
+      </div>
+      <div><div class='field-lbl'>Spotify Link</div><input class='inp' id='es-spotify' value='${esc(s.spotify||"")}' placeholder='https://open.spotify.com/track/…'/></div>
       <div><div class='field-lbl'>Passcode</div><input class='inp' id='es-p' type='tel' maxlength='4' value='${s.passcode}'/><div id='es-err' style='color:#ff4455;font-size:12px;margin-top:4px;min-height:14px;font-weight:500'></div></div>
       <div><div class='field-lbl'>Color</div><div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:4px'>${COLORS.map(c=>`<div data-c='${c}' onclick='_pC(this)' style='width:27px;height:27px;border-radius:50%;background:${c};cursor:pointer;outline:${c===s.color?"3px solid rgba(255,255,255,.8)":"none"};outline-offset:2px'></div>`).join("")}</div></div>
       <button class='btn btn-primary btn-full' onclick='_saveEdit("${sid}")'>Save</button>
     </div>`);
     window._pC=el=>{window._selC=el.dataset.c;document.querySelectorAll("[data-c]").forEach(d=>d.style.outline="none");el.style.outline="3px solid rgba(255,255,255,.8)";el.style.outlineOffset="2px";};
+    window._pickEsPhoto=async()=>{
+      const r=await pickPhoto(); if(!r) return;
+      window._esPhoto=r.dataUrl;
+      const av=$("es-photo-av"); if(av) av.innerHTML=`<img src='${r.dataUrl}' style='width:100%;height:100%;object-fit:cover'/>`;
+    };
     window._saveEdit=sid2=>{
       const fn=($("es-fn")||{}).value?.trim()||"";
       const li=($("es-li")||{}).value?.trim().slice(0,1).toUpperCase()||"";
       const p =($("es-p") ||{}).value?.trim()||"";
+      const title=($("es-title")||{}).value?.trim()||"";
+      const spotify=($("es-spotify")||{}).value?.trim()||"";
       const err=$("es-err");
       if(!fn){if(err)err.textContent="First name required";return;}
       if(!/^\d{4}$/.test(p)){if(err)err.textContent="Must be 4 digits";return;}
       if(biz.staff.find(s=>s.passcode===p&&s.id!==sid2)){if(err)err.textContent="Passcode in use";return;}
-      biz.staff=biz.staff.map(s=>s.id===sid2?{...s,firstName:fn,lastInitial:li,passcode:p,color:window._selC||s.color}:s);
+      biz.staff=biz.staff.map(s=>s.id===sid2?{...s,firstName:fn,lastInitial:li,passcode:p,color:window._selC||s.color,title,photo:window._esPhoto!==undefined?window._esPhoto:s.photo,spotify}:s);
       saveBiz(biz);closeModal();renderSList(biz);showToast("Saved!");
     };
   };
@@ -1502,18 +1657,35 @@ window._delGoal=function(gid,type,sid) {
 // ─── BRANDING TAB ──────────────────────────
 function renderBrandingTab(body, biz) {
   const b={...DEFAULT_BRAND,...(biz.brand||{})};
-  body.innerHTML=`<div style='background:#15171f;border-radius:9px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:rgba(238,240,248,.38);line-height:1.6;font-weight:500'>Controls what customers see at <strong style='color:#eef0f8'>tapplus.link/${esc(biz.slug)}</strong>. Customers see none of the dashboard.</div><div class='field-lbl'>Business Name</div><input class='inp' id='br-n' value='${esc(b.name)}' style='margin-bottom:8px'/><div class='field-lbl'>Tagline</div><input class='inp' id='br-t' value='${esc(b.tagline)}' style='margin-bottom:8px'/><div class='field-lbl'>Logo URL</div>
-      <input class='inp' id='br-l' value='${esc(b.logoUrl)}' placeholder='https://your-logo.png' style='margin-bottom:6px' oninput='_previewLogo()'/>
-      <div id='logo-preview' style='margin-bottom:8px;min-height:0'>
-        ${b.logoUrl ? `<img src='${esc(b.logoUrl)}' style='height:52px;max-width:160px;object-fit:contain;border-radius:8px;border:1px solid rgba(255,255,255,.08);padding:6px;background:#0e0f15' onerror='this.style.display="none"'/>` : ""}
-      </div>
-      <div style='background:#15171f;border-radius:8px;padding:9px 11px;margin-bottom:8px;font-size:11px;color:rgba(238,240,248,.38);line-height:1.6'>
-        💡 Use a direct image link. Upload your logo free at
-        <a href='https://imgbb.com' target='_blank' style='color:#00e5a0;text-decoration:none'>imgbb.com</a> or
-        <a href='https://postimages.org' target='_blank' style='color:#00e5a0;text-decoration:none'>postimages.org</a>
-        — copy the direct link and paste above.
+  body.innerHTML=`<div style='background:#15171f;border-radius:9px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:rgba(238,240,248,.38);line-height:1.6;font-weight:500'>Controls what customers see at <strong style='color:#eef0f8'>tapplus.link/${esc(biz.slug)}</strong>. Customers see none of the dashboard.</div><div class='field-lbl'>Business Name</div><input class='inp' id='br-n' value='${esc(b.name)}' style='margin-bottom:8px'/><div class='field-lbl'>Tagline</div><input class='inp' id='br-t' value='${esc(b.tagline)}' style='margin-bottom:8px'/><div class='field-lbl'>Logo</div>
+      <div style='display:flex;align-items:center;gap:10px;margin-bottom:10px'>
+        <div id='br-logo-preview' style='width:72px;height:72px;border-radius:14px;background:#15171f;border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden'>
+          ${b.logoUrl?`<img src='${esc(b.logoUrl)}' style='width:100%;height:100%;object-fit:contain;padding:4px' onerror='this.style.display="none"'/>`:`<span style='font-size:24px'>🏪</span>`}
+        </div>
+        <div style='flex:1;display:flex;flex-direction:column;gap:7px'>
+          <button onclick='_brPickLogo()' style='padding:9px 14px;background:#15171f;border:1px solid rgba(255,255,255,.1);border-radius:10px;font-size:12px;font-weight:700;color:rgba(238,240,248,.6);cursor:pointer;font-family:inherit;text-align:left'>📷 Upload from device</button>
+          <input class='inp' id='br-l' value='${esc(b.logoUrl)}' placeholder='Or paste a URL' style='font-size:12px' oninput='_previewLogo()'/>
+        </div>
       </div><div class='field-lbl'>Rating Question</div><input class='inp' id='br-q' value='${esc(b.ratingQuestion)}' style='margin-bottom:8px'/><div class='field-lbl'>Review Prompt (4-5★)</div><input class='inp' id='br-rp' value='${esc(b.reviewPrompt)}' style='margin-bottom:8px'/><div class='field-lbl'>Thank You Message</div><input class='inp' id='br-ty' value='${esc(b.thankYouMsg)}' style='margin-bottom:8px'/><div class='field-lbl'>Low Rating Message (1-3★)</div><input class='inp' id='br-lr' value='${esc(b.lowRatingMsg)}' style='margin-bottom:12px'/><div style='display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px'><div><div class='field-lbl'>Brand Color</div><input type='color' id='br-bc' value='${b.brandColor||"#00e5a0"}' style='width:100%;height:36px;border:none;background:none;cursor:pointer;border-radius:6px'/></div><div><div class='field-lbl'>Background</div><input type='color' id='br-bg' value='${b.bgColor||"#07080c"}' style='width:100%;height:36px;border:none;background:none;cursor:pointer;border-radius:6px'/></div><div><div class='field-lbl'>Text</div><input type='color' id='br-tc' value='${b.textColor||"#ffffff"}' style='width:100%;height:36px;border:none;background:none;cursor:pointer;border-radius:6px'/></div></div><div style='display:flex;gap:8px'><button onclick='window.open("/${esc(biz.slug)}","_blank")' class='btn btn-ghost btn-full'>👁 Preview</button><button onclick='_saveBrand()' class='btn btn-primary btn-full'>Save Branding</button></div>`;
-  window._saveBrand=()=>{biz.brand={name:($("br-n")||{}).value?.trim()||b.name,tagline:($("br-t")||{}).value?.trim()||"",logoUrl:($("br-l")||{}).value?.trim()||"",ratingQuestion:($("br-q")||{}).value?.trim()||DEFAULT_BRAND.ratingQuestion,reviewPrompt:($("br-rp")||{}).value?.trim()||DEFAULT_BRAND.reviewPrompt,thankYouMsg:($("br-ty")||{}).value?.trim()||DEFAULT_BRAND.thankYouMsg,lowRatingMsg:($("br-lr")||{}).value?.trim()||DEFAULT_BRAND.lowRatingMsg,brandColor:($("br-bc")||{}).value||"#00e5a0",bgColor:($("br-bg")||{}).value||"#07080c",textColor:($("br-tc")||{}).value||"#ffffff"};saveBiz(biz);showToast("Branding saved!");};
+  window._brLogoData = null;
+  window._brPickLogo = async function() {
+    const r = await pickPhoto(); if (!r) return;
+    window._brLogoData = r.dataUrl;
+    const prev = $("br-logo-preview"); if(prev) prev.innerHTML=`<img src='${r.dataUrl}' style='width:100%;height:100%;object-fit:contain;padding:4px'/>`;
+    const inp = $("br-l"); if(inp) inp.value="";
+  };
+  window._previewLogo = function() {
+    const url = ($("br-l")||{}).value?.trim()||"";
+    const prev = $("br-logo-preview"); if (!prev) return;
+    if (!url) return;
+    window._brLogoData = null;
+    prev.innerHTML = `<img src='${esc(url)}' style='width:100%;height:100%;object-fit:contain;padding:4px' onerror='this.style.display="none"'/>`;
+  };
+  window._saveBrand=()=>{
+    const logoUrl = window._brLogoData || ($("br-l")||{}).value?.trim()||"";
+    biz.brand={name:($("br-n")||{}).value?.trim()||b.name,tagline:($("br-t")||{}).value?.trim()||"",logoUrl,ratingQuestion:($("br-q")||{}).value?.trim()||DEFAULT_BRAND.ratingQuestion,reviewPrompt:($("br-rp")||{}).value?.trim()||DEFAULT_BRAND.reviewPrompt,thankYouMsg:($("br-ty")||{}).value?.trim()||DEFAULT_BRAND.thankYouMsg,lowRatingMsg:($("br-lr")||{}).value?.trim()||DEFAULT_BRAND.lowRatingMsg,brandColor:($("br-bc")||{}).value||"#00e5a0",bgColor:($("br-bg")||{}).value||"#07080c",textColor:($("br-tc")||{}).value||"#ffffff"};
+    saveBiz(biz);showToast("Branding saved!");
+  };
   window._previewLogo = function() {
     const url = ($("br-l")||{}).value?.trim()||"";
     const prev = $("logo-preview"); if (!prev) return;
