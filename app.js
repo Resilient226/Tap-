@@ -822,24 +822,39 @@ function renderCustomerPage(app, biz, staffId) {
   ) : null;
   const staffName = staffRec ? staffDisplayName(staffParts(staffRec)) : "General";
 
-  // ── LOG TAP IMMEDIATELY on page load ─────────────────────────────────────
-  // This is the true "card tap" moment — the instant the customer's phone loads.
-  // We write a pending record now, then update it with rating/feedback when they submit.
-  const tapId = uid();
-  const tapTs = Date.now();
-  saveTap({
-    id:        tapId,
-    ts:        tapTs,
-    bizSlug:   biz.slug,
-    staffId:   staffId || "general",
-    staffName: staffName,
-    rating:    null,
-    platform:  null,
-    review:    false,
-    feedback:  "",
-    redirected:false,
-    status:    "tapped"   // pending — no rating yet
-  });
+  // ── LOG TAP on page load — with 30-min cooldown per device ─────────────
+  // Prevents duplicate taps from refreshes or accidental double-taps.
+  // Uses sessionStorage so each new browser session always counts.
+  const COOLDOWN_MS  = 30 * 60 * 1000; // 30 minutes
+  const cooldownKey  = "tp_tap_" + biz.slug + "_" + (staffId || "general");
+  const lastTapTime  = parseInt(sessionStorage.getItem(cooldownKey) || "0");
+  const now          = Date.now();
+  const isDuplicate  = (now - lastTapTime) < COOLDOWN_MS;
+
+  const tapId = isDuplicate ? (sessionStorage.getItem(cooldownKey + "_id") || uid()) : uid();
+  const tapTs = isDuplicate ? lastTapTime : now;
+
+  if (!isDuplicate) {
+    // Fresh tap — log it and set the cooldown
+    sessionStorage.setItem(cooldownKey, String(now));
+    sessionStorage.setItem(cooldownKey + "_id", tapId);
+    saveTap({
+      id:        tapId,
+      ts:        tapTs,
+      bizSlug:   biz.slug,
+      staffId:   staffId || "general",
+      staffName: staffName,
+      rating:    null,
+      platform:  null,
+      review:    false,
+      feedback:  "",
+      redirected:false,
+      status:    "tapped"
+    });
+    console.log("✓ New tap logged:", tapId);
+  } else {
+    console.log("↩ Duplicate tap ignored — same device within 30 min. Using existing:", tapId);
+  }
 
   let rating = 0;
 
@@ -1329,7 +1344,24 @@ function renderStaffDash(el, biz, s) {
       };
       window._sbPhotoData = undefined; // undefined = unchanged
 
-      // Links section is now inline in the HTML above
+      function renderSbLinks() {
+        const el = $("sb-links-list"); if (!el) return;
+        const links = s.links || [];
+        if (!links.length) {
+          el.innerHTML = "<div style='font-size:12px;color:rgba(238,240,248,.3);margin-bottom:8px;font-weight:500'>No links yet.</div>";
+          return;
+        }
+        const ICONS2 = {spotify:"🎵",phone:"📞",email:"✉️",instagram:"📸",tiktok:"🎵",custom:"🔗"};
+        el.innerHTML = links.map((l,i) => `
+          <div style='display:flex;align-items:center;gap:10px;margin-bottom:8px;background:#15171f;border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:11px 13px'>
+            <span style='font-size:18px;flex-shrink:0'>${ICONS2[l.type]||"🔗"}</span>
+            <div style='flex:1;min-width:0'>
+              <div style='font-size:13px;font-weight:700;color:#eef0f8'>${esc(l.label||l.type)}</div>
+              <div style='font-size:11px;color:rgba(238,240,248,.35);overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>${esc(l.url)}</div>
+            </div>
+            <button onclick='_sbRmLink(${i})' style='background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:8px;padding:5px 9px;font-size:11px;font-weight:700;color:#ff4455;cursor:pointer;font-family:inherit;flex-shrink:0'>✕</button>
+          </div>`).join("");
+      }
       renderSbLinks();
 
       window._sbRmLink = function(i) {
@@ -2057,101 +2089,9 @@ function renderBrandingTab(body, biz) {
     const prev = $("br-logo-preview"); if (!prev) return;
     if (!url) return;
     window._brLogoData = null;
-
-  // Render bulletin links list
-  function renderBulletinList() {
-    const el = $("br-bulletin-list"); if (!el) return;
-    const links = b.bulletinLinks || [];
-    if (!links.length) { el.innerHTML="<div style='font-size:12px;color:rgba(238,240,248,.3);margin-bottom:8px'>No links yet.</div>"; return; }
-    el.innerHTML = links.map((l,i) => `
-      <div style='display:flex;align-items:center;gap:8px;margin-bottom:8px;background:#0e0f15;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px 12px'>
-        <div style='flex:1;min-width:0'>
-          <div style='font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>${esc(l.label)}</div>
-          <div style='font-size:11px;color:rgba(238,240,248,.35);overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>${esc(l.url)}</div>
-        </div>
-        <button onclick='_rmBulletinLink(${i})' style='background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:7px;padding:4px 8px;font-size:11px;font-weight:700;color:#ff4455;cursor:pointer;font-family:inherit;flex-shrink:0'>✕</button>
-      </div>`).join("");
-  }
-
-  window._toggleAllowed = function(type) {
-    if (!b.allowedStaffLinks) b.allowedStaffLinks = {};
-    b.allowedStaffLinks[type] = !b.allowedStaffLinks[type];
-    const tog = $("tog-"+type); if (!tog) return;
-    const on = b.allowedStaffLinks[type];
-    tog.style.background = on ? "#00e5a0" : "rgba(255,255,255,.1)";
-    tog.querySelector("div").style.left = on ? "22px" : "4px";
-    // Auto-save immediately so staff see the change right away
-    biz.brand = {...biz.brand, allowedStaffLinks: b.allowedStaffLinks};
-    saveBiz(biz);
-  };
-
-  window._rmBulletinLink = function(i) {
-    b.bulletinLinks = (b.bulletinLinks||[]).filter((_,idx)=>idx!==i);
-    biz.brand = {...biz.brand, bulletinLinks: b.bulletinLinks};
-    saveBiz(biz);
-    renderBulletinList();
-    showToast("Removed");
-  };
-
-  window._addBulletinLink = function() {
-    showModal(`<div class='modal-head'><div class='modal-title'>Add to Bulletin Board</div><button class='modal-close' onclick='closeModal()'>×</button></div>
-      <div style='display:flex;flex-direction:column;gap:11px'>
-        <div>
-          <div class='field-lbl'>Type</div>
-          <select class='sel' id='bl-type' onchange='_blToggleUrl(this.value)'>
-            <option value='custom'>🔗 Link (with URL)</option>
-            <option value='text'>📝 Text only (no link)</option>
-            <option value='spotify'>🎵 Spotify</option>
-            <option value='phone'>📞 Phone</option>
-            <option value='email'>✉️ Email</option>
-          </select>
-        </div>
-        <div><div class='field-lbl'>Title</div><input class='inp' id='bl-lbl' placeholder='e.g. Happy Hour, Weekly Special…'/></div>
-        <div id='bl-url-wrap'><div class='field-lbl'>URL</div><input class='inp' id='bl-url' placeholder='https://…'/></div>
-        <div><div class='field-lbl'>Description (optional)</div><input class='inp' id='bl-sub' placeholder='More details…'/></div>
-        <button class='btn btn-primary btn-full' onclick='_saveBulletinLink()'>Add to Bulletin</button>
-      </div>`);
-    window._blToggleUrl = function(type) {
-      const wrap = $("bl-url-wrap");
-      const inp  = $("bl-url");
-      if (!wrap) return;
-      if (type === "text") {
-        wrap.style.display = "none";
-        if (inp) inp.value = "";
-      } else {
-        wrap.style.display = "block";
-        if (inp) inp.placeholder = type==="phone"?"(555) 555-5555" : type==="email"?"hello@restaurant.com" : type==="spotify"?"https://open.spotify.com/…" : "https://…";
-      }
-    };
-    window._saveBulletinLink = function() {
-      const label = ($("bl-lbl")||{}).value?.trim()||"";
-      const url   = ($("bl-url")||{}).value?.trim()||"";
-      const sub   = ($("bl-sub")||{}).value?.trim()||"";
-      const type2 = ($("bl-type")||{}).value||"custom";
-      if (!label) { showToast("Title required"); return; }
-      if (type2 !== "text" && !url) { showToast("URL required for this type"); return; }
-      // Auto-prefix URL so relative paths don't break
-      let finalUrl = url;
-      if (url && type2 !== "phone" && type2 !== "email") {
-        if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("spotify:")) {
-          finalUrl = "https://" + url.replace(/^\/+/,"");
-        }
-      }
-      if (!b.bulletinLinks) b.bulletinLinks = [];
-      b.bulletinLinks.push({label, url:finalUrl, sublabel:sub, type:type2});
-      biz.brand = {...biz.brand, bulletinLinks: b.bulletinLinks};
-      saveBiz(biz);
-      closeModal();
-      renderBulletinList();
-    };
-  };
-
-  // Render existing bulletin links
-  setTimeout(renderBulletinList, 0);
-
-
     prev.innerHTML = `<img src='${esc(url)}' style='width:100%;height:100%;object-fit:contain;padding:4px' onerror='this.style.display="none"'/>`;
   };
+
   window._saveBrand=()=>{
     const logoUrl = window._brLogoData || ($("br-l")||{}).value?.trim()||"";
     biz.brand={
