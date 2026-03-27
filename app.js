@@ -23,7 +23,9 @@ const DEFAULT_BRAND = {
   reviewPrompt:"Glad to hear it! Share your experience:",
   thankYouMsg:"Thank you! Your feedback means a lot.",
   lowRatingMsg:"We're sorry. Tell us what happened:",
-  logoUrl:"", brandColor:"#00e5a0", bgColor:"#0a0a0f", textColor:"#ffffff"
+  logoUrl:"", brandColor:"#00e5a0", bgColor:"#0a0a0f", textColor:"#ffffff",
+  bulletinLinks: [],
+  allowedStaffLinks: {spotify:true,phone:false,email:false,instagram:false,tiktok:false,custom:false}
 };
 const DEFAULT_LINKS = [
   {id:"gl",label:"Google",icon:"🔍",url:"https://search.google.com/local/writereview?placeid=YOUR_ID",active:true},
@@ -113,15 +115,34 @@ const getAdminPin= () => LS.get("tp_admin_pin","0000");
 // which run server-side — no CORS issues
 
 async function saveTap(tap) {
-  try {
+  const attempt = async () => {
     const res = await fetch("/api/tap", {
       method:  "POST",
       headers: {"Content-Type":"application/json"},
       body:    JSON.stringify(tap)
     });
-    if (res.ok) { console.log("saveTap OK:", tap.id); }
-    else { const e=await res.json().catch(()=>({})); console.error("saveTap failed:", res.status, e.error); }
-  } catch(e) { console.error("saveTap error:", e.message); }
+    if (!res.ok) {
+      const e = await res.json().catch(()=>({}));
+      throw new Error(res.status + ": " + (e.error||"unknown"));
+    }
+    return res;
+  };
+
+  try {
+    await attempt();
+    console.log("✓ saveTap:", tap.id, tap.status, tap.bizSlug);
+  } catch(e) {
+    console.warn("saveTap retry after error:", e.message);
+    // Retry once after 1.5s
+    setTimeout(async () => {
+      try {
+        await attempt();
+        console.log("✓ saveTap (retry):", tap.id);
+      } catch(e2) {
+        console.error("✗ saveTap failed:", tap.id, e2.message);
+      }
+    }, 1500);
+  }
 }
 
 async function fbQueryTaps(bizSlug, staffId) {
@@ -864,23 +885,151 @@ function renderCustomerPage(app, biz, staffId) {
         loading="lazy" style="border-radius:14px;display:block"></iframe>
     </div>` : "";
 
-  app.innerHTML = `
-    <div style='position:fixed;top:0;left:0;right:0;text-align:center;padding:9px;font-size:9px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:rgba(255,255,255,.16);z-index:100;pointer-events:none'>POWERED BY TAP+</div>
-    <div style='position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;width:100%;max-width:400px;margin:0 auto;padding:52px 24px 40px;text-align:center'>
-      ${staffBubble}
-      ${logoBlock}
-      ${b.tagline?`<div style='font-size:13px;font-weight:500;color:${b.textColor};opacity:.5;margin-bottom:18px;line-height:1.55'>${esc(b.tagline)}</div>`:`<div style='margin-bottom:10px'></div>`}
-      ${spotifyBlock}
-      <div style='font-size:19px;font-weight:800;color:${b.textColor};margin-bottom:6px;letter-spacing:-.02em'>${esc(b.ratingQuestion)}</div>
-      <div style='font-size:12px;color:${b.textColor};opacity:.35;margin-bottom:22px;font-weight:500'>Tap a star below</div>
-      <div style='display:flex;gap:10px;justify-content:center;margin-bottom:20px'>
-        ${[1,2,3,4,5].map(i=>`<div id='cs${i}' onclick='_cStar(${i})' style='font-size:44px;cursor:pointer;filter:brightness(.22);transition:filter .12s,transform .12s;-webkit-user-select:none;user-select:none'>⭐</div>`).join("")}
-      </div>
-      <div id='cust-after' style='width:100%'></div>
-    </div>
-    <div style='position:fixed;bottom:10px;left:0;right:0;text-align:center;font-size:9px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.1);pointer-events:none'>TAP+</div>`;
+  // Inject page-specific styles
+  const styleEl = document.getElementById('tap-page-styles') || document.createElement('style');
+  styleEl.id = 'tap-page-styles';
+  styleEl.textContent = `
+    @keyframes fadeUp { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes starPop { 0%{transform:scale(1)} 40%{transform:scale(1.35)} 70%{transform:scale(.92)} 100%{transform:scale(1.08)} }
+    @keyframes pulseRing { 0%{transform:scale(1);opacity:.6} 100%{transform:scale(1.9);opacity:0} }
+    .tap-star { transition: transform .15s, filter .15s; cursor:pointer; user-select:none; -webkit-user-select:none; }
+    .tap-star.lit { animation: starPop .35s ease forwards; }
+    .tap-star svg { display:block; }
+    .cust-in { animation: fadeUp .45s cubic-bezier(.22,1,.36,1) both; }
+    .cust-in-1 { animation-delay:.05s; }
+    .cust-in-2 { animation-delay:.12s; }
+    .cust-in-3 { animation-delay:.2s; }
+    .cust-in-4 { animation-delay:.28s; }
+    .review-btn { display:flex;align-items:center;gap:14px;border-radius:16px;padding:16px 18px;text-decoration:none;margin-bottom:10px;text-align:left;transition:transform .15s,background .15s; }
+    .review-btn:active { transform:scale(.97); }
+  `;
+  document.head.appendChild(styleEl);
 
-  window._toggleStaffCard = function() {
+  // SVG star — crisp on all screens
+  const starSvg = (filled, color) => `<svg width="44" height="44" viewBox="0 0 44 44" fill="none">
+    <path d="M22 4l4.5 9.1 10 1.46-7.25 7.06 1.71 9.97L22 26.9l-8.96 4.7 1.71-9.97L7.5 14.56l10-1.46z"
+      fill="${filled ? color : 'none'}"
+      stroke="${filled ? color : 'rgba(255,255,255,.2)'}"
+      stroke-width="1.5" stroke-linejoin="round"/>
+  </svg>`;
+
+  // ── Data for the page ────────────────────────────────────────────────────
+  const bulletinLinks   = b.bulletinLinks || [];
+  const allowed         = b.allowedStaffLinks || {};
+  const staffLinks      = (staffRec?.links || []).filter(l => allowed[l.type]);
+
+  const LINK_META = {
+    spotify:   { icon:"🎵", label:"Music",     color:"#1db954" },
+    phone:     { icon:"📞", label:"Call",      color:"#00e5a0" },
+    email:     { icon:"✉️",  label:"Email",     color:"#7c6aff" },
+    instagram: { icon:"📸", label:"Instagram", color:"#e1306c" },
+    tiktok:    { icon:"🎵", label:"TikTok",    color:"#ff0050" },
+    custom:    { icon:"🔗", label:"Link",      color:"#ffd166" },
+  };
+
+  function renderLinkRow(l) {
+    const meta = LINK_META[l.type] || LINK_META.custom;
+    if (l.type === "spotify") {
+      const m = (l.url||"").match(/spotify\.com\/(track|playlist|album|episode)\/([a-zA-Z0-9]+)/);
+      if (!m) return "";
+      return `<div style="width:100%;border-radius:14px;overflow:hidden;margin-bottom:10px">
+        <iframe src="https://open.spotify.com/embed/${m[1]}/${m[2]}?utm_source=generator&theme=0"
+          width="100%" height="80" frameborder="0"
+          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+          style="border-radius:14px;display:block"></iframe></div>`;
+    }
+    const href = l.type==="phone" ? "tel:"+l.url : l.type==="email" ? "mailto:"+l.url : l.url;
+    return `<a href="${esc(href)}" target="_blank" rel="noreferrer"
+      style="display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:14px 16px;text-decoration:none;margin-bottom:10px"
+      ontouchstart="this.style.background='rgba(255,255,255,.1)'" ontouchend="this.style.background='rgba(255,255,255,.06)'">
+      <div style="width:42px;height:42px;border-radius:12px;background:${meta.color}20;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${meta.icon}</div>
+      <div style="flex:1;text-align:left">
+        <div style="font-weight:700;font-size:14px;color:${b.textColor}">${esc(l.label||meta.label)}</div>
+        ${l.sublabel?`<div style="font-size:11px;color:${b.textColor};opacity:.4;margin-top:1px">${esc(l.sublabel)}</div>`:""}
+      </div>
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M7 4l5 5-5 5" stroke="${b.brandColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>`;
+  }
+
+  // Staff bubble — top right, tappable
+  const staffBubbleHTML = staffRec ? `
+    <div id="staff-bubble" onclick="_toggleStaffCard(event)"
+      style="position:absolute;top:16px;right:16px;cursor:pointer;z-index:10">
+      ${staffRec.photo
+        ? `<img src="${esc(staffRec.photo)}" style="width:46px;height:46px;border-radius:50%;object-fit:cover;border:2px solid ${b.brandColor};display:block"/>`
+        : `<div style="width:46px;height:46px;border-radius:50%;background:${b.brandColor}22;border:2px solid ${b.brandColor};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:${b.brandColor}">${staffIni(staffParts(staffRec))}</div>`
+      }
+    </div>
+    <div id="staff-card"
+      style="display:none;position:absolute;top:70px;right:16px;background:#0e0f15;border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:14px 18px;min-width:140px;z-index:20;text-align:left;box-shadow:0 8px 32px rgba(0,0,0,.5)">
+      <div style="font-weight:800;font-size:14px;color:${b.textColor}">${esc(staffDisplayName(staffParts(staffRec)))}</div>
+      ${staffRec.title?`<div style="font-size:12px;color:${b.brandColor};font-weight:600;margin-top:3px">${esc(staffRec.title)}</div>`:""}
+    </div>` : "";
+
+  app.innerHTML = `
+    <style>
+      @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+      @keyframes starPop{0%{transform:scale(1)}40%{transform:scale(1.38)}70%{transform:scale(.9)}100%{transform:scale(1.08)}}
+      @keyframes pulseRing{0%{transform:scale(1);opacity:.7}100%{transform:scale(2);opacity:0}}
+      @keyframes grow{from{width:0}to{width:100%}}
+      .tap-star{cursor:pointer;user-select:none;-webkit-user-select:none;transition:transform .15s}
+      .tap-star.lit{animation:starPop .35s ease forwards}
+      .cust-in{animation:fadeUp .45s cubic-bezier(.22,1,.36,1) both}
+      .cust-in-1{animation-delay:.04s}.cust-in-2{animation-delay:.1s}
+      .cust-in-3{animation-delay:.17s}.cust-in-4{animation-delay:.24s}
+      .cust-in-5{animation-delay:.31s}
+      .tap-link{transition:background .15s,transform .1s}.tap-link:active{transform:scale(.97)}
+    </style>
+
+    <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px 20px 48px;position:relative;max-width:420px;margin:0 auto">
+
+      ${staffBubbleHTML}
+
+      <!-- 1. Business logo -->
+      <div class="cust-in cust-in-1" style="margin-top:16px;margin-bottom:22px;text-align:center">
+        ${b.logoUrl
+          ? `<img src="${esc(b.logoUrl)}" alt="${esc(b.name)}" style="height:80px;max-width:220px;object-fit:contain;border-radius:16px;display:block;margin:0 auto"/>`
+          : `<div style="font-weight:900;font-size:28px;letter-spacing:-.04em;color:${b.textColor}">${esc(b.name)}</div>`
+        }
+        ${b.tagline?`<div style="font-size:13px;color:${b.textColor};opacity:.4;margin-top:8px;font-weight:500">${esc(b.tagline)}</div>`:""}
+      </div>
+
+      <!-- 2. Star rating -->
+      <div class="cust-in cust-in-2" style="text-align:center;margin-bottom:28px;width:100%">
+        <div style="font-size:21px;font-weight:900;color:${b.textColor};margin-bottom:20px;letter-spacing:-.03em;line-height:1.25">${esc(b.ratingQuestion)}</div>
+        <div style="display:flex;gap:10px;justify-content:center;margin-bottom:0">
+          ${[1,2,3,4,5].map(i=>`
+            <div id="cs${i}" class="tap-star" onclick="_cStar(${i})" style="position:relative;width:48px;height:48px;display:flex;align-items:center;justify-content:center">
+              <div id="cs${i}-ring" style="position:absolute;inset:-6px;border-radius:50%;border:2px solid ${b.brandColor};opacity:0;pointer-events:none"></div>
+              <svg width="42" height="42" viewBox="0 0 42 42" fill="none">
+                <path d="M21 4l3.9 8 8.8 1.3-6.4 6.2 1.5 8.8L21 24.3l-7.8 4.1 1.5-8.8L8.3 13.3l8.8-1.3z"
+                  fill="rgba(255,255,255,.12)" stroke="rgba(255,255,255,.25)" stroke-width="1.5" stroke-linejoin="round" id="cs${i}-path"/>
+              </svg>
+            </div>`).join("")}
+        </div>
+      </div>
+
+      <div id="cust-after" class="cust-in cust-in-3" style="width:100%"></div>
+
+      <!-- 3. Bulletin board — business links -->
+      ${bulletinLinks.length ? `
+        <div class="cust-in cust-in-4" style="width:100%;margin-top:8px">
+          <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px;text-align:center">${esc(b.name)}</div>
+          ${bulletinLinks.map(l=>renderLinkRow(l)).join("")}
+        </div>` : ""}
+
+      <!-- 4. Staff personal links -->
+      ${staffLinks.length ? `
+        <div class="cust-in cust-in-5" style="width:100%;margin-top:${bulletinLinks.length?'4':'8'}px">
+          <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px;text-align:center">${esc(staffDisplayName(staffParts(staffRec)))}</div>
+          ${staffLinks.map(l=>renderLinkRow(l)).join("")}
+        </div>` : ""}
+
+    </div>
+    <div style="position:fixed;bottom:10px;left:0;right:0;text-align:center;font-size:9px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.08);pointer-events:none">POWERED BY TAP+</div>`;
+
+  window._toggleStaffCard = function(e) {
+    e && e.stopPropagation();
     const card = document.getElementById("staff-card");
     if (card) card.style.display = card.style.display === "none" ? "block" : "none";
   };
@@ -891,24 +1040,62 @@ function renderCustomerPage(app, biz, staffId) {
       card.style.display = "none";
   });
 
+  // SVG star fill helper
+  function updateStars(r) {
+    const bc = b.brandColor;
+    for (let i=1;i<=5;i++) {
+      const path = document.getElementById("cs"+i+"-path"); if(!path) continue;
+      const filled = i<=r;
+      path.setAttribute("fill",    filled ? bc : "rgba(255,255,255,.12)");
+      path.setAttribute("stroke",  filled ? bc : "rgba(255,255,255,.25)");
+      const el = $("cs"+i); if(!el) continue;
+      if (filled) { el.classList.add("lit"); setTimeout(()=>el.classList.remove("lit"),350); }
+    }
+  }
+
   window._cStar = function(r) {
     rating = r;
-    for (let i=1;i<=5;i++) { const s=$("cs"+i); if(s){s.style.filter=i<=r?"brightness(1)":"brightness(.22)";s.style.transform=i<=r?"scale(1.12)":"scale(1)";} }
+    updateStars(r);
+    // Pulse ring on selected star
+    const ring = document.getElementById("cs"+r+"-ring");
+    if (ring) {
+      ring.style.animation = "none";
+      ring.offsetHeight; // reflow
+      ring.style.animation = "pulseRing .5s ease forwards";
+    }
     const after=$("cust-after"); if(!after) return;
 
     if (r===5 && firstLink) {
       // Update the existing tap record with rating + redirect info
       saveTap({id:tapId,ts:tapTs,bizSlug:biz.slug,staffId:staffId||"general",staffName,rating:r,platform:firstLink.label,review:true,feedback:"",redirected:true,status:"rated"});
-      after.innerHTML=`<div style='animation:up .25s ease;text-align:center;padding:8px 0'><div style='font-size:38px;margin-bottom:10px'>🙏</div><div style='font-weight:800;font-size:18px;color:${b.textColor};margin-bottom:6px'>Thank you!</div><div style='font-size:13px;color:${b.textColor};opacity:.45;font-weight:500'>Taking you to leave a review…</div></div>`;
+      after.innerHTML=`
+        <div style='animation:fadeUp .3s ease;text-align:center;padding:16px 0'>
+          <div style='font-size:52px;margin-bottom:14px;animation:starPop .4s ease'>🙏</div>
+          <div style='font-weight:900;font-size:22px;color:${b.textColor};margin-bottom:8px;letter-spacing:-.03em'>Thank you!</div>
+          <div style='font-size:13px;color:${b.textColor};opacity:.4;font-weight:500;margin-bottom:20px'>Opening ${esc(firstLink.label)} for you…</div>
+          <div style='width:100%;height:3px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden'>
+            <div style='height:100%;background:${b.brandColor};border-radius:2px;animation:grow 1s linear forwards'></div>
+          </div>
+          <style>@keyframes grow{from{width:0}to{width:100%}}</style>
+        </div>`;
       setTimeout(()=>window.location.href=firstLink.url, 1100);
       return;
     }
 
     if (r>=4 && activeLinks.length>0) {
       saveTap({id:tapId,ts:tapTs,bizSlug:biz.slug,staffId:staffId||"general",staffName,rating:r,platform:null,review:false,feedback:"",redirected:false,status:"rated"});
-      after.innerHTML=`<div style='font-size:13px;font-weight:600;color:${b.textColor};opacity:.55;margin-bottom:12px'>${esc(b.reviewPrompt)}</div>`+
-        activeLinks.map(l=>`<a href='${esc(l.url)}' target='_blank' rel='noreferrer' style='display:flex;align-items:center;gap:13px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.11);border-radius:14px;padding:15px 17px;text-decoration:none;margin-bottom:9px;text-align:left'><span style='font-size:24px'>${l.icon}</span><div style='flex:1'><div style='font-weight:700;font-size:14px;color:${b.textColor}'>Review on ${esc(l.label)}</div><div style='font-size:11px;color:${b.textColor};opacity:.38;margin-top:2px'>Tap to open</div></div><span style='color:${b.textColor};opacity:.3;font-size:16px'>→</span></a>`).join("")+
-        `<button onclick='_cDone()' style='width:100%;margin-top:4px;padding:14px;background:${b.brandColor};color:#07080c;border:none;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit'>Done ✓</button>`;
+      after.innerHTML=`
+        <div style='font-size:15px;font-weight:700;color:${b.textColor};opacity:.7;margin-bottom:16px;line-height:1.4'>${esc(b.reviewPrompt)}</div>`+
+        activeLinks.map((l,i)=>`
+          <a href='${esc(l.url)}' target='_blank' rel='noreferrer' class='review-btn' style='background:${i===0?"rgba(255,255,255,.1)":"rgba(255,255,255,.05)"};border:1px solid ${i===0?b.brandColor:"rgba(255,255,255,.08)"};animation:fadeUp .3s ${i*.08}s ease both'>
+            <div style='width:44px;height:44px;border-radius:12px;background:${i===0?b.brandColor+"22":"rgba(255,255,255,.06)"};display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0'>${l.icon}</div>
+            <div style='flex:1'>
+              <div style='font-weight:800;font-size:15px;color:${b.textColor};margin-bottom:2px'>${esc(l.label)}</div>
+              <div style='font-size:11px;color:${b.textColor};opacity:.38;font-weight:500'>Tap to leave a review</div>
+            </div>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M7 4l5 5-5 5" stroke="${b.brandColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>`).join("")+
+        `<button onclick='_cDone()' style='width:100%;margin-top:8px;padding:15px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;color:${b.textColor};opacity:.6'>Done, no thanks</button>`;
       return;
     }
 
@@ -939,7 +1126,14 @@ function renderCustomerPage(app, biz, staffId) {
 }
 
 function tyScreen(b) {
-  return `<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:40px;background:${b.bgColor};animation:up .3s ease'><div style='font-size:52px;margin-bottom:16px'>🙏</div><div style='font-weight:900;font-size:22px;margin-bottom:10px;color:${b.textColor};letter-spacing:-.03em'>${esc(b.thankYouMsg)}</div><div style='font-size:13px;color:${b.textColor};opacity:.4;max-width:260px;line-height:1.65;font-weight:500'>Your feedback helps us improve.</div><div style='position:fixed;bottom:12px;left:0;right:0;text-align:center;font-size:9px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.14)'>POWERED BY TAP+</div></div>`;
+  return `<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:40px;background:${b.bgColor}'>
+    <div style='animation:starPop .5s ease'>
+      <div style='width:80px;height:80px;border-radius:50%;background:${b.brandColor}18;border:2px solid ${b.brandColor}40;display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 20px'>🙏</div>
+    </div>
+    <div style='font-weight:900;font-size:24px;margin-bottom:10px;color:${b.textColor};letter-spacing:-.04em;animation:fadeUp .4s .1s ease both'>${esc(b.thankYouMsg)}</div>
+    <div style='font-size:14px;color:${b.textColor};opacity:.38;max-width:240px;line-height:1.65;font-weight:500;animation:fadeUp .4s .2s ease both'>Your feedback makes a difference.</div>
+    <div style='position:fixed;bottom:12px;left:0;right:0;text-align:center;font-size:9px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.1)'>POWERED BY TAP+</div>
+  </div>`;
 }
 
 // ═══════════════════════════════════════════
@@ -1074,9 +1268,7 @@ function renderStaffDash(el, biz, s) {
           </div>
           <div class='field-lbl'>My Title</div>
           <input class='inp' id='sb-title' value='${esc(s.title||"")}' placeholder='e.g. Server, Bartender, Host' style='margin-bottom:14px'/>
-          <div class='field-lbl'>Theme Song</div>
-          <input class='inp' id='sb-spotify' value='${esc(s.spotify||"")}' placeholder='https://open.spotify.com/track/…' style='margin-bottom:6px'/>
-          <div style='font-size:11px;color:rgba(238,240,248,.35);margin-bottom:14px;font-weight:500'>Paste any Spotify track, playlist, or album link. It auto-plays when customers tap your card.</div>
+
           <button onclick='_sbSave()' class='btn btn-primary btn-full'>Save My Branding</button>
         </div>`;
 
@@ -1090,12 +1282,65 @@ function renderStaffDash(el, biz, s) {
         const av = $("sb-photo-av"); if (av) av.innerHTML = staffIni(staffParts(s));
       };
       window._sbPhotoData = undefined; // undefined = unchanged
+      // Build staff links list
+      if (!s.links) s.links = [];
+      const allowedTypes = Object.entries(biz.brand?.allowedStaffLinks||{}).filter(([,v])=>v).map(([k])=>k);
+      const LINK_LABELS = {spotify:"🎵 Spotify",phone:"📞 Phone",email:"✉️ Email",instagram:"📸 Instagram",tiktok:"🎵 TikTok",custom:"🔗 Custom Link"};
+
+      function renderSbLinks() {
+        const el = $("sb-links-list"); if (!el) return;
+        if (!s.links.length) { el.innerHTML="<div style='font-size:12px;color:rgba(238,240,248,.3);margin-bottom:10px'>No links yet.</div>"; return; }
+        el.innerHTML = s.links.map((l,i) => `
+          <div style='display:flex;align-items:center;gap:8px;margin-bottom:8px;background:#15171f;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px 12px'>
+            <div style='flex:1;min-width:0'>
+              <div style='font-size:13px;font-weight:700'>${esc(l.label||l.type)}</div>
+              <div style='font-size:11px;color:rgba(238,240,248,.35);overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>${esc(l.url)}</div>
+            </div>
+            <button onclick='_sbRmLink(${i})' style='background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:7px;padding:4px 8px;font-size:11px;font-weight:700;color:#ff4455;cursor:pointer;font-family:inherit;flex-shrink:0'>✕</button>
+          </div>`).join("");
+      }
+
+      // Add links section to branding card
+      const sbCard = $("sb-branding-card");
+      if (sbCard && allowedTypes.length) {
+        const linksSection = document.createElement("div");
+        linksSection.innerHTML = `
+          <div class='field-lbl' style='margin-top:4px'>My Links</div>
+          <div id='sb-links-list' style='margin-bottom:8px'></div>
+          <select class='sel' id='sb-link-type' style='margin-bottom:8px'>
+            ${allowedTypes.map(t=>`<option value='${t}'>${LINK_LABELS[t]||t}</option>`).join("")}
+          </select>
+          <div style='display:flex;gap:8px;margin-bottom:14px'>
+            <input class='inp' id='sb-link-url' placeholder='URL or username' style='flex:1'/>
+            <button onclick='_sbAddLink()' style='background:#00e5a0;color:#07080c;border:none;border-radius:10px;padding:0 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0'>Add</button>
+          </div>`;
+        sbCard.appendChild(linksSection);
+        setTimeout(renderSbLinks, 0);
+      }
+
+      window._sbRmLink = function(i) {
+        s.links.splice(i,1);
+        biz.staff = biz.staff.map(x=>x.id===s.id?{...x,links:s.links}:x);
+        saveBiz(biz); renderSbLinks();
+      };
+      window._sbAddLink = function() {
+        const type = ($("sb-link-type")||{}).value||"custom";
+        const url  = ($("sb-link-url")||{}).value?.trim()||"";
+        if (!url) { showToast("Enter a URL"); return; }
+        if (!s.links) s.links = [];
+        s.links.push({type, url, label:LINK_LABELS[type]||type});
+        biz.staff = biz.staff.map(x=>x.id===s.id?{...x,links:s.links}:x);
+        saveBiz(biz);
+        const inp = $("sb-link-url"); if (inp) inp.value="";
+        renderSbLinks();
+        showToast("Link added!");
+      };
+
       window._sbSave = function() {
         const title   = ($("sb-title")||{}).value?.trim()||"";
-        const spotify = ($("sb-spotify")||{}).value?.trim()||"";
         const photo   = window._sbPhotoData !== undefined ? window._sbPhotoData : (s.photo||"");
-        biz.staff = biz.staff.map(x => x.id===s.id ? {...x, title, spotify, photo} : x);
-        s.title=title; s.spotify=spotify; s.photo=photo;
+        biz.staff = biz.staff.map(x => x.id===s.id ? {...x, title, photo, links:s.links||[]} : x);
+        s.title=title; s.photo=photo;
         saveBiz(biz);
         showToast("Branding saved! ✨");
       };
@@ -1666,8 +1911,79 @@ function renderBrandingTab(body, biz) {
           <button onclick='_brPickLogo()' style='padding:9px 14px;background:#15171f;border:1px solid rgba(255,255,255,.1);border-radius:10px;font-size:12px;font-weight:700;color:rgba(238,240,248,.6);cursor:pointer;font-family:inherit;text-align:left'>📷 Upload from device</button>
           <input class='inp' id='br-l' value='${esc(b.logoUrl)}' placeholder='Or paste a URL' style='font-size:12px' oninput='_previewLogo()'/>
         </div>
-      </div><div class='field-lbl'>Rating Question</div><input class='inp' id='br-q' value='${esc(b.ratingQuestion)}' style='margin-bottom:8px'/><div class='field-lbl'>Review Prompt (4-5★)</div><input class='inp' id='br-rp' value='${esc(b.reviewPrompt)}' style='margin-bottom:8px'/><div class='field-lbl'>Thank You Message</div><input class='inp' id='br-ty' value='${esc(b.thankYouMsg)}' style='margin-bottom:8px'/><div class='field-lbl'>Low Rating Message (1-3★)</div><input class='inp' id='br-lr' value='${esc(b.lowRatingMsg)}' style='margin-bottom:12px'/><div style='display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px'><div><div class='field-lbl'>Brand Color</div><input type='color' id='br-bc' value='${b.brandColor||"#00e5a0"}' style='width:100%;height:36px;border:none;background:none;cursor:pointer;border-radius:6px'/></div><div><div class='field-lbl'>Background</div><input type='color' id='br-bg' value='${b.bgColor||"#07080c"}' style='width:100%;height:36px;border:none;background:none;cursor:pointer;border-radius:6px'/></div><div><div class='field-lbl'>Text</div><input type='color' id='br-tc' value='${b.textColor||"#ffffff"}' style='width:100%;height:36px;border:none;background:none;cursor:pointer;border-radius:6px'/></div></div><div style='display:flex;gap:8px'><button onclick='window.open("/${esc(biz.slug)}","_blank")' class='btn btn-ghost btn-full'>👁 Preview</button><button onclick='_saveBrand()' class='btn btn-primary btn-full'>Save Branding</button></div>`;
+      </div><div class='field-lbl'>Rating Question</div><input class='inp' id='br-q' value='${esc(b.ratingQuestion)}' style='margin-bottom:8px'/><div class='field-lbl'>Review Prompt (4-5★)</div><input class='inp' id='br-rp' value='${esc(b.reviewPrompt)}' style='margin-bottom:8px'/><div class='field-lbl'>Thank You Message</div><input class='inp' id='br-ty' value='${esc(b.thankYouMsg)}' style='margin-bottom:8px'/><div class='field-lbl'>Low Rating Message (1-3★)</div><input class='inp' id='br-lr' value='${esc(b.lowRatingMsg)}' style='margin-bottom:12px'/><div style='display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px'><div><div class='field-lbl'>Brand Color</div><input type='color' id='br-bc' value='${b.brandColor||"#00e5a0"}' style='width:100%;height:36px;border:none;background:none;cursor:pointer;border-radius:6px'/></div><div><div class='field-lbl'>Background</div><input type='color' id='br-bg' value='${b.bgColor||"#07080c"}' style='width:100%;height:36px;border:none;background:none;cursor:pointer;border-radius:6px'/></div><div><div class='field-lbl'>Text</div><input type='color' id='br-tc' value='${b.textColor||"#ffffff"}' style='width:100%;height:36px;border:none;background:none;cursor:pointer;border-radius:6px'/></div></div><div style='display:flex;gap:8px'><button onclick='window.open("/${esc(biz.slug)}","_blank")' class='btn btn-ghost btn-full'>👁 Preview</button><button onclick='_saveBrand()' class='btn btn-primary btn-full'>Save</button></div>
+  <div class='sec-lbl' style='margin-top:18px;margin-bottom:10px'>Bulletin Board</div>
+  <div style='background:#15171f;border-radius:9px;padding:10px 12px;font-size:12px;color:rgba(238,240,248,.38);margin-bottom:10px;line-height:1.6'>Links shown on every staff tap page — events, deals, announcements.</div>
+  <div id='br-bulletin-list' style='margin-bottom:8px'></div>
+  <button onclick='_addBulletinLink()' class='btn btn-ghost btn-full' style='margin-bottom:18px'>+ Add Bulletin Link</button>
+  <div class='sec-lbl' style='margin-bottom:10px'>Staff Can Add to Their Page</div>
+  <div style='background:#0e0f15;border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:14px'>
+    ${["spotify","phone","email","instagram","tiktok","custom"].map(t=>{
+      const labels={spotify:"🎵 Music / Spotify",phone:"📞 Phone Number",email:"✉️ Email",instagram:"📸 Instagram",tiktok:"🎵 TikTok",custom:"🔗 Custom Link"};
+      const on=(b.allowedStaffLinks||{})[t];
+      return `<div style='display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.04)'>
+        <span style='font-size:13px;font-weight:600'>${labels[t]}</span>
+        <div onclick='_toggleAllowed("${t}")' id='tog-${t}' style='width:44px;height:26px;border-radius:13px;background:${on?"#00e5a0":"rgba(255,255,255,.1)"};position:relative;cursor:pointer;transition:background .2s;flex-shrink:0'>
+          <div style='position:absolute;top:4px;left:${on?"22px":"4px"};width:18px;height:18px;border-radius:50%;background:#fff;transition:left .2s'></div>
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`;
   window._brLogoData = null;
+
+  // Render bulletin links list
+  function renderBulletinList() {
+    const el = $("br-bulletin-list"); if (!el) return;
+    const links = b.bulletinLinks || [];
+    if (!links.length) { el.innerHTML="<div style='font-size:12px;color:rgba(238,240,248,.3);margin-bottom:8px'>No links yet.</div>"; return; }
+    el.innerHTML = links.map((l,i) => `
+      <div style='display:flex;align-items:center;gap:8px;margin-bottom:8px;background:#0e0f15;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px 12px'>
+        <div style='flex:1;min-width:0'>
+          <div style='font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>${esc(l.label)}</div>
+          <div style='font-size:11px;color:rgba(238,240,248,.35);overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>${esc(l.url)}</div>
+        </div>
+        <button onclick='_rmBulletinLink(${i})' style='background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:7px;padding:4px 8px;font-size:11px;font-weight:700;color:#ff4455;cursor:pointer;font-family:inherit;flex-shrink:0'>✕</button>
+      </div>`).join("");
+  }
+
+  window._toggleAllowed = function(type) {
+    if (!b.allowedStaffLinks) b.allowedStaffLinks = {};
+    b.allowedStaffLinks[type] = !b.allowedStaffLinks[type];
+    const tog = $("tog-"+type); if (!tog) return;
+    const on = b.allowedStaffLinks[type];
+    tog.style.background = on ? "#00e5a0" : "rgba(255,255,255,.1)";
+    tog.querySelector("div").style.left = on ? "20px" : "3px";
+  };
+
+  window._rmBulletinLink = function(i) {
+    b.bulletinLinks = (b.bulletinLinks||[]).filter((_,idx)=>idx!==i);
+    renderBulletinList();
+  };
+
+  window._addBulletinLink = function() {
+    showModal(`<div class='modal-head'><div class='modal-title'>Add Bulletin Link</div><button class='modal-close' onclick='closeModal()'>×</button></div>
+      <div style='display:flex;flex-direction:column;gap:11px'>
+        <div><div class='field-lbl'>Label</div><input class='inp' id='bl-lbl' placeholder='e.g. Happy Hour — 4-6pm daily'/></div>
+        <div><div class='field-lbl'>URL</div><input class='inp' id='bl-url' placeholder='https://…'/></div>
+        <div><div class='field-lbl'>Sublabel (optional)</div><input class='inp' id='bl-sub' placeholder='Short description'/></div>
+        <button class='btn btn-primary btn-full' onclick='_saveBulletinLink()'>Add</button>
+      </div>`);
+    window._saveBulletinLink = function() {
+      const label = ($("bl-lbl")||{}).value?.trim()||"";
+      const url   = ($("bl-url")||{}).value?.trim()||"";
+      const sub   = ($("bl-sub")||{}).value?.trim()||"";
+      if (!label || !url) { showToast("Label and URL required"); return; }
+      if (!b.bulletinLinks) b.bulletinLinks = [];
+      b.bulletinLinks.push({label, url, sublabel:sub, type:"custom"});
+      closeModal();
+      renderBulletinList();
+    };
+  };
+
+  // Render existing bulletin links
+  setTimeout(renderBulletinList, 0);
+
+
   window._brPickLogo = async function() {
     const r = await pickPhoto(); if (!r) return;
     window._brLogoData = r.dataUrl;
@@ -1679,11 +1995,78 @@ function renderBrandingTab(body, biz) {
     const prev = $("br-logo-preview"); if (!prev) return;
     if (!url) return;
     window._brLogoData = null;
+
+  // Render bulletin links list
+  function renderBulletinList() {
+    const el = $("br-bulletin-list"); if (!el) return;
+    const links = b.bulletinLinks || [];
+    if (!links.length) { el.innerHTML="<div style='font-size:12px;color:rgba(238,240,248,.3);margin-bottom:8px'>No links yet.</div>"; return; }
+    el.innerHTML = links.map((l,i) => `
+      <div style='display:flex;align-items:center;gap:8px;margin-bottom:8px;background:#0e0f15;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px 12px'>
+        <div style='flex:1;min-width:0'>
+          <div style='font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>${esc(l.label)}</div>
+          <div style='font-size:11px;color:rgba(238,240,248,.35);overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>${esc(l.url)}</div>
+        </div>
+        <button onclick='_rmBulletinLink(${i})' style='background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:7px;padding:4px 8px;font-size:11px;font-weight:700;color:#ff4455;cursor:pointer;font-family:inherit;flex-shrink:0'>✕</button>
+      </div>`).join("");
+  }
+
+  window._toggleAllowed = function(type) {
+    if (!b.allowedStaffLinks) b.allowedStaffLinks = {};
+    b.allowedStaffLinks[type] = !b.allowedStaffLinks[type];
+    const tog = $("tog-"+type); if (!tog) return;
+    const on = b.allowedStaffLinks[type];
+    tog.style.background = on ? "#00e5a0" : "rgba(255,255,255,.1)";
+    tog.querySelector("div").style.left = on ? "20px" : "3px";
+  };
+
+  window._rmBulletinLink = function(i) {
+    b.bulletinLinks = (b.bulletinLinks||[]).filter((_,idx)=>idx!==i);
+    renderBulletinList();
+  };
+
+  window._addBulletinLink = function() {
+    showModal(`<div class='modal-head'><div class='modal-title'>Add Bulletin Link</div><button class='modal-close' onclick='closeModal()'>×</button></div>
+      <div style='display:flex;flex-direction:column;gap:11px'>
+        <div><div class='field-lbl'>Label</div><input class='inp' id='bl-lbl' placeholder='e.g. Happy Hour — 4-6pm daily'/></div>
+        <div><div class='field-lbl'>URL</div><input class='inp' id='bl-url' placeholder='https://…'/></div>
+        <div><div class='field-lbl'>Sublabel (optional)</div><input class='inp' id='bl-sub' placeholder='Short description'/></div>
+        <button class='btn btn-primary btn-full' onclick='_saveBulletinLink()'>Add</button>
+      </div>`);
+    window._saveBulletinLink = function() {
+      const label = ($("bl-lbl")||{}).value?.trim()||"";
+      const url   = ($("bl-url")||{}).value?.trim()||"";
+      const sub   = ($("bl-sub")||{}).value?.trim()||"";
+      if (!label || !url) { showToast("Label and URL required"); return; }
+      if (!b.bulletinLinks) b.bulletinLinks = [];
+      b.bulletinLinks.push({label, url, sublabel:sub, type:"custom"});
+      closeModal();
+      renderBulletinList();
+    };
+  };
+
+  // Render existing bulletin links
+  setTimeout(renderBulletinList, 0);
+
+
     prev.innerHTML = `<img src='${esc(url)}' style='width:100%;height:100%;object-fit:contain;padding:4px' onerror='this.style.display="none"'/>`;
   };
   window._saveBrand=()=>{
     const logoUrl = window._brLogoData || ($("br-l")||{}).value?.trim()||"";
-    biz.brand={name:($("br-n")||{}).value?.trim()||b.name,tagline:($("br-t")||{}).value?.trim()||"",logoUrl,ratingQuestion:($("br-q")||{}).value?.trim()||DEFAULT_BRAND.ratingQuestion,reviewPrompt:($("br-rp")||{}).value?.trim()||DEFAULT_BRAND.reviewPrompt,thankYouMsg:($("br-ty")||{}).value?.trim()||DEFAULT_BRAND.thankYouMsg,lowRatingMsg:($("br-lr")||{}).value?.trim()||DEFAULT_BRAND.lowRatingMsg,brandColor:($("br-bc")||{}).value||"#00e5a0",bgColor:($("br-bg")||{}).value||"#07080c",textColor:($("br-tc")||{}).value||"#ffffff"};
+    biz.brand={
+      name:($("br-n")||{}).value?.trim()||b.name,
+      tagline:($("br-t")||{}).value?.trim()||"",
+      logoUrl,
+      ratingQuestion:($("br-q")||{}).value?.trim()||DEFAULT_BRAND.ratingQuestion,
+      reviewPrompt:($("br-rp")||{}).value?.trim()||DEFAULT_BRAND.reviewPrompt,
+      thankYouMsg:($("br-ty")||{}).value?.trim()||DEFAULT_BRAND.thankYouMsg,
+      lowRatingMsg:($("br-lr")||{}).value?.trim()||DEFAULT_BRAND.lowRatingMsg,
+      brandColor:($("br-bc")||{}).value||"#00e5a0",
+      bgColor:($("br-bg")||{}).value||"#07080c",
+      textColor:($("br-tc")||{}).value||"#ffffff",
+      bulletinLinks: b.bulletinLinks || [],
+      allowedStaffLinks: b.allowedStaffLinks || {}
+    };
     saveBiz(biz);showToast("Branding saved!");
   };
   window._previewLogo = function() {
