@@ -1328,26 +1328,6 @@ function renderStaffDash(el, biz, s) {
         const av = $("sb-photo-av"); if (av) av.innerHTML = staffIni(staffParts(s));
       };
       window._sbPhotoData = undefined; // undefined = unchanged
-      // Build staff links list
-      if (!s.links) s.links = [];
-      const allowedTypes = Object.entries(biz.brand?.allowedStaffLinks||{}).filter(([,v])=>v).map(([k])=>k);
-      const LINK_LABELS = {spotify:"🎵 Spotify",phone:"📞 Phone",email:"✉️ Email",instagram:"📸 Instagram",tiktok:"🎵 TikTok",custom:"🔗 Custom Link"};
-
-      function renderSbLinks() {
-        const el = $("sb-links-list"); if (!el) return;
-        const links = s.links || [];
-        if (!links.length) { el.innerHTML="<div style='font-size:12px;color:rgba(238,240,248,.3);margin-bottom:10px'>No links yet.</div>"; return; }
-        const ICONS = {spotify:"🎵",phone:"📞",email:"✉️",instagram:"📸",tiktok:"🎵",custom:"🔗"};
-        el.innerHTML = links.map((l,i) => `
-          <div style='display:flex;align-items:center;gap:8px;margin-bottom:8px;background:#15171f;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px 12px'>
-            <span style='font-size:18px;flex-shrink:0'>${ICONS[l.type]||"🔗"}</span>
-            <div style='flex:1;min-width:0'>
-              <div style='font-size:13px;font-weight:700'>${esc(l.label||l.type)}</div>
-              <div style='font-size:11px;color:rgba(238,240,248,.35);overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>${esc(l.url)}</div>
-            </div>
-            <button onclick='_sbRmLink(${i})' style='background:rgba(255,68,85,.08);border:1px solid rgba(255,68,85,.2);border-radius:7px;padding:4px 8px;font-size:11px;font-weight:700;color:#ff4455;cursor:pointer;font-family:inherit;flex-shrink:0'>✕</button>
-          </div>`).join("");
-      }
 
       // Links section is now inline in the HTML above
       renderSbLinks();
