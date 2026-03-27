@@ -1272,6 +1272,30 @@ function renderStaffDash(el, biz, s) {
     }
     else if (tab==="branding") {
       const sp = staffParts(s);
+
+      // Allowed link types set by admin
+      const allowedTypes = Object.entries(biz.brand?.allowedStaffLinks||{}).filter(([,v])=>v).map(([k])=>k);
+      const LINK_LABELS2 = {spotify:"🎵 Spotify",phone:"📞 Phone",email:"✉️ Email",instagram:"📸 Instagram",tiktok:"🎵 TikTok",custom:"🔗 Custom Link"};
+      if (!s.links) s.links = [];
+
+      const linksSection = allowedTypes.length ? `
+        <div class='sec-lbl' style='margin-top:4px;margin-bottom:6px'>My Links</div>
+        <div style='font-size:11px;color:rgba(238,240,248,.35);margin-bottom:10px;font-weight:500'>Show when customers tap your photo</div>
+        <div id='sb-links-list' style='margin-bottom:10px'></div>
+        <div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px'>
+          <select class='sel' id='sb-link-type'>
+            ${allowedTypes.map(t=>`<option value="${t}">${LINK_LABELS2[t]||t}</option>`).join("")}
+          </select>
+          <input class='inp' id='sb-link-label' placeholder='Label'/>
+        </div>
+        <div style='display:flex;gap:8px;margin-bottom:14px'>
+          <input class='inp' id='sb-link-url' placeholder='URL or @username' style='flex:1'/>
+          <button onclick='_sbAddLink()' style='background:#00e5a0;color:#07080c;border:none;border-radius:10px;padding:0 16px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;flex-shrink:0'>+</button>
+        </div>` : `
+        <div style='background:#15171f;border-radius:10px;padding:12px;font-size:12px;color:rgba(238,240,248,.35);margin-bottom:14px;line-height:1.5'>
+          No link types enabled yet. Ask your admin to turn them on in the Branding tab.
+        </div>`;
+
       body.innerHTML=`
         <div class='plain-card' style='margin-bottom:12px'>
           <div style='font-weight:700;font-size:13px;margin-bottom:14px'>✨ My Tap Page</div>
@@ -1287,11 +1311,14 @@ function renderStaffDash(el, biz, s) {
           </div>
           <div class='field-lbl'>My Title</div>
           <input class='inp' id='sb-title' value='${esc(s.title||"")}' placeholder='e.g. Server, Bartender, Host' style='margin-bottom:14px'/>
-
+          ${linksSection}
           <button onclick='_sbSave()' class='btn btn-primary btn-full'>Save My Branding</button>
         </div>`;
 
-      window._sbPickPhoto = async function() {
+      // Render existing links
+      renderSbLinks();
+
+            window._sbPickPhoto = async function() {
         const r = await pickPhoto(); if (!r) return;
         const av = $("sb-photo-av"); if (av) av.innerHTML=`<img src='${r.dataUrl}' style='width:100%;height:100%;object-fit:cover'/>`;
         window._sbPhotoData = r.dataUrl;
@@ -1308,9 +1335,12 @@ function renderStaffDash(el, biz, s) {
 
       function renderSbLinks() {
         const el = $("sb-links-list"); if (!el) return;
-        if (!s.links.length) { el.innerHTML="<div style='font-size:12px;color:rgba(238,240,248,.3);margin-bottom:10px'>No links yet.</div>"; return; }
-        el.innerHTML = s.links.map((l,i) => `
+        const links = s.links || [];
+        if (!links.length) { el.innerHTML="<div style='font-size:12px;color:rgba(238,240,248,.3);margin-bottom:10px'>No links yet.</div>"; return; }
+        const ICONS = {spotify:"🎵",phone:"📞",email:"✉️",instagram:"📸",tiktok:"🎵",custom:"🔗"};
+        el.innerHTML = links.map((l,i) => `
           <div style='display:flex;align-items:center;gap:8px;margin-bottom:8px;background:#15171f;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px 12px'>
+            <span style='font-size:18px;flex-shrink:0'>${ICONS[l.type]||"🔗"}</span>
             <div style='flex:1;min-width:0'>
               <div style='font-size:13px;font-weight:700'>${esc(l.label||l.type)}</div>
               <div style='font-size:11px;color:rgba(238,240,248,.35);overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>${esc(l.url)}</div>
@@ -1319,23 +1349,8 @@ function renderStaffDash(el, biz, s) {
           </div>`).join("");
       }
 
-      // Add links section to branding card
-      const sbCard = $("sb-branding-card");
-      if (sbCard && allowedTypes.length) {
-        const linksSection = document.createElement("div");
-        linksSection.innerHTML = `
-          <div class='field-lbl' style='margin-top:4px'>My Links</div>
-          <div id='sb-links-list' style='margin-bottom:8px'></div>
-          <select class='sel' id='sb-link-type' style='margin-bottom:8px'>
-            ${allowedTypes.map(t=>`<option value='${t}'>${LINK_LABELS[t]||t}</option>`).join("")}
-          </select>
-          <div style='display:flex;gap:8px;margin-bottom:14px'>
-            <input class='inp' id='sb-link-url' placeholder='URL or username' style='flex:1'/>
-            <button onclick='_sbAddLink()' style='background:#00e5a0;color:#07080c;border:none;border-radius:10px;padding:0 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0'>Add</button>
-          </div>`;
-        sbCard.appendChild(linksSection);
-        setTimeout(renderSbLinks, 0);
-      }
+      // Links section is now inline in the HTML above
+      renderSbLinks();
 
       window._sbRmLink = function(i) {
         s.links.splice(i,1);
@@ -1343,16 +1358,25 @@ function renderStaffDash(el, biz, s) {
         saveBiz(biz); renderSbLinks();
       };
       window._sbAddLink = function() {
-        const type = ($("sb-link-type")||{}).value||"custom";
-        const url  = ($("sb-link-url")||{}).value?.trim()||"";
+        const type  = ($("sb-link-type")||{}).value||"custom";
+        const url   = ($("sb-link-url")||{}).value?.trim()||"";
+        const label = ($("sb-link-label")||{}).value?.trim()||LINK_LABELS2[type]||type;
         if (!url) { showToast("Enter a URL"); return; }
+        // Auto-prefix
+        let finalUrl = url;
+        if (type !== "phone" && type !== "email" && !url.startsWith("http")) {
+          finalUrl = "https://" + url.replace(/^@/,"").replace(/^\/+/,"");
+          if (type === "instagram") finalUrl = "https://instagram.com/" + url.replace(/^@/,"").replace(/^.*instagram\.com\//,"");
+          if (type === "tiktok")    finalUrl = "https://tiktok.com/@" + url.replace(/^@/,"").replace(/^.*tiktok\.com\/@?/,"");
+        }
         if (!s.links) s.links = [];
-        s.links.push({type, url, label:LINK_LABELS[type]||type});
+        s.links.push({type, url:finalUrl, label});
         biz.staff = biz.staff.map(x=>x.id===s.id?{...x,links:s.links}:x);
         saveBiz(biz);
-        const inp = $("sb-link-url"); if (inp) inp.value="";
+        const ui = $("sb-link-url"); if (ui) ui.value="";
+        const ul = $("sb-link-label"); if (ul) ul.value="";
         renderSbLinks();
-        showToast("Link added!");
+        showToast("Link added! ✓");
       };
 
       window._sbSave = function() {
@@ -2022,8 +2046,15 @@ function renderBrandingTab(body, biz) {
       const type2 = ($("bl-type")||{}).value||"custom";
       if (!label) { showToast("Title required"); return; }
       if (type2 !== "text" && !url) { showToast("URL required for this type"); return; }
+      // Auto-prefix URL so relative paths don't break
+      let finalUrl = url;
+      if (url && type2 !== "phone" && type2 !== "email") {
+        if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("spotify:")) {
+          finalUrl = "https://" + url.replace(/^\/+/,"");
+        }
+      }
       if (!b.bulletinLinks) b.bulletinLinks = [];
-      b.bulletinLinks.push({label, url, sublabel:sub, type:type2});
+      b.bulletinLinks.push({label, url:finalUrl, sublabel:sub, type:type2});
       biz.brand = {...biz.brand, bulletinLinks: b.bulletinLinks};
       saveBiz(biz);
       closeModal();
@@ -2119,8 +2150,15 @@ function renderBrandingTab(body, biz) {
       const type2 = ($("bl-type")||{}).value||"custom";
       if (!label) { showToast("Title required"); return; }
       if (type2 !== "text" && !url) { showToast("URL required for this type"); return; }
+      // Auto-prefix URL so relative paths don't break
+      let finalUrl = url;
+      if (url && type2 !== "phone" && type2 !== "email") {
+        if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("spotify:")) {
+          finalUrl = "https://" + url.replace(/^\/+/,"");
+        }
+      }
       if (!b.bulletinLinks) b.bulletinLinks = [];
-      b.bulletinLinks.push({label, url, sublabel:sub, type:type2});
+      b.bulletinLinks.push({label, url:finalUrl, sublabel:sub, type:type2});
       biz.brand = {...biz.brand, bulletinLinks: b.bulletinLinks};
       saveBiz(biz);
       closeModal();
