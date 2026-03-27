@@ -961,9 +961,28 @@ function renderCustomerPage(app, biz, staffId) {
       }
     </div>
     <div id="staff-card"
-      style="display:none;position:absolute;top:70px;right:16px;background:#0e0f15;border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:14px 18px;min-width:140px;z-index:20;text-align:left;box-shadow:0 8px 32px rgba(0,0,0,.5)">
-      <div style="font-weight:800;font-size:14px;color:${b.textColor}">${esc(staffDisplayName(staffParts(staffRec)))}</div>
-      ${staffRec.title?`<div style="font-size:12px;color:${b.brandColor};font-weight:600;margin-top:3px">${esc(staffRec.title)}</div>`:""}
+      style="display:none;position:absolute;top:70px;right:16px;background:#0e0f15;border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:16px 18px;min-width:160px;max-width:240px;z-index:20;text-align:left;box-shadow:0 8px 32px rgba(0,0,0,.5)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        ${staffRec.photo
+          ? `<img src="${esc(staffRec.photo)}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0"/>`
+          : `<div style="width:36px;height:36px;border-radius:50%;background:${b.brandColor}22;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:${b.brandColor};flex-shrink:0">${staffIni(staffParts(staffRec))}</div>`
+        }
+        <div>
+          <div style="font-weight:800;font-size:14px;color:${b.textColor};line-height:1.2">${esc(staffDisplayName(staffParts(staffRec)))}</div>
+          ${staffRec.title?`<div style="font-size:11px;color:${b.brandColor};font-weight:600;margin-top:2px">${esc(staffRec.title)}</div>`:""}
+        </div>
+      </div>
+      ${(staffRec.links||[]).filter(l=>(b.allowedStaffLinks||{})[l.type]).map(l=>{
+        const meta2 = {spotify:{icon:"🎵"},phone:{icon:"📞"},email:{icon:"✉️"},instagram:{icon:"📸"},tiktok:{icon:"🎵"},custom:{icon:"🔗"}};
+        const m2 = meta2[l.type]||meta2.custom;
+        const href2 = l.type==="phone"?"tel:"+l.url:l.type==="email"?"mailto:"+l.url:l.url;
+        return `<a href="${esc(href2)}" target="_blank" rel="noreferrer"
+          style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06);text-decoration:none">
+          <span style="font-size:16px">${m2.icon}</span>
+          <span style="font-size:12px;font-weight:600;color:${b.textColor};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.label||l.type)}</span>
+          <svg style="flex-shrink:0;margin-left:auto" width="14" height="14" viewBox="0 0 18 18" fill="none"><path d="M7 4l5 5-5 5" stroke="${b.brandColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>`;
+      }).join("")}
     </div>` : "";
 
   app.innerHTML = `
@@ -1952,29 +1971,61 @@ function renderBrandingTab(body, biz) {
     const tog = $("tog-"+type); if (!tog) return;
     const on = b.allowedStaffLinks[type];
     tog.style.background = on ? "#00e5a0" : "rgba(255,255,255,.1)";
-    tog.querySelector("div").style.left = on ? "20px" : "3px";
+    tog.querySelector("div").style.left = on ? "22px" : "4px";
+    // Auto-save immediately so staff see the change right away
+    biz.brand = {...biz.brand, allowedStaffLinks: b.allowedStaffLinks};
+    saveBiz(biz);
   };
 
   window._rmBulletinLink = function(i) {
     b.bulletinLinks = (b.bulletinLinks||[]).filter((_,idx)=>idx!==i);
+    biz.brand = {...biz.brand, bulletinLinks: b.bulletinLinks};
+    saveBiz(biz);
     renderBulletinList();
+    showToast("Removed");
   };
 
   window._addBulletinLink = function() {
-    showModal(`<div class='modal-head'><div class='modal-title'>Add Bulletin Link</div><button class='modal-close' onclick='closeModal()'>×</button></div>
+    showModal(`<div class='modal-head'><div class='modal-title'>Add to Bulletin Board</div><button class='modal-close' onclick='closeModal()'>×</button></div>
       <div style='display:flex;flex-direction:column;gap:11px'>
-        <div><div class='field-lbl'>Label</div><input class='inp' id='bl-lbl' placeholder='e.g. Happy Hour — 4-6pm daily'/></div>
-        <div><div class='field-lbl'>URL</div><input class='inp' id='bl-url' placeholder='https://…'/></div>
-        <div><div class='field-lbl'>Sublabel (optional)</div><input class='inp' id='bl-sub' placeholder='Short description'/></div>
-        <button class='btn btn-primary btn-full' onclick='_saveBulletinLink()'>Add</button>
+        <div>
+          <div class='field-lbl'>Type</div>
+          <select class='sel' id='bl-type' onchange='_blToggleUrl(this.value)'>
+            <option value='custom'>🔗 Link (with URL)</option>
+            <option value='text'>📝 Text only (no link)</option>
+            <option value='spotify'>🎵 Spotify</option>
+            <option value='phone'>📞 Phone</option>
+            <option value='email'>✉️ Email</option>
+          </select>
+        </div>
+        <div><div class='field-lbl'>Title</div><input class='inp' id='bl-lbl' placeholder='e.g. Happy Hour, Weekly Special…'/></div>
+        <div id='bl-url-wrap'><div class='field-lbl'>URL</div><input class='inp' id='bl-url' placeholder='https://…'/></div>
+        <div><div class='field-lbl'>Description (optional)</div><input class='inp' id='bl-sub' placeholder='More details…'/></div>
+        <button class='btn btn-primary btn-full' onclick='_saveBulletinLink()'>Add to Bulletin</button>
       </div>`);
+    window._blToggleUrl = function(type) {
+      const wrap = $("bl-url-wrap");
+      const inp  = $("bl-url");
+      if (!wrap) return;
+      if (type === "text") {
+        wrap.style.display = "none";
+        if (inp) inp.value = "";
+      } else {
+        wrap.style.display = "block";
+        if (inp) inp.placeholder = type==="phone"?"(555) 555-5555" : type==="email"?"hello@restaurant.com" : type==="spotify"?"https://open.spotify.com/…" : "https://…";
+      }
+    };
     window._saveBulletinLink = function() {
       const label = ($("bl-lbl")||{}).value?.trim()||"";
       const url   = ($("bl-url")||{}).value?.trim()||"";
       const sub   = ($("bl-sub")||{}).value?.trim()||"";
-      if (!label || !url) { showToast("Label and URL required"); return; }
+      const type2 = ($("bl-type")||{}).value||"custom";
+      if (!label) { showToast("Title required"); return; }
+      if (type2 !== "text" && !url) { showToast("URL required for this type"); return; }
       if (!b.bulletinLinks) b.bulletinLinks = [];
-      b.bulletinLinks.push({label, url, sublabel:sub, type:"custom"});
+      b.bulletinLinks.push({label, url, sublabel:sub, type:type2});
+      biz.brand = {...biz.brand, bulletinLinks: b.bulletinLinks};
+      saveBiz(biz);
       closeModal();
       renderBulletinList();
     };
@@ -2017,29 +2068,61 @@ function renderBrandingTab(body, biz) {
     const tog = $("tog-"+type); if (!tog) return;
     const on = b.allowedStaffLinks[type];
     tog.style.background = on ? "#00e5a0" : "rgba(255,255,255,.1)";
-    tog.querySelector("div").style.left = on ? "20px" : "3px";
+    tog.querySelector("div").style.left = on ? "22px" : "4px";
+    // Auto-save immediately so staff see the change right away
+    biz.brand = {...biz.brand, allowedStaffLinks: b.allowedStaffLinks};
+    saveBiz(biz);
   };
 
   window._rmBulletinLink = function(i) {
     b.bulletinLinks = (b.bulletinLinks||[]).filter((_,idx)=>idx!==i);
+    biz.brand = {...biz.brand, bulletinLinks: b.bulletinLinks};
+    saveBiz(biz);
     renderBulletinList();
+    showToast("Removed");
   };
 
   window._addBulletinLink = function() {
-    showModal(`<div class='modal-head'><div class='modal-title'>Add Bulletin Link</div><button class='modal-close' onclick='closeModal()'>×</button></div>
+    showModal(`<div class='modal-head'><div class='modal-title'>Add to Bulletin Board</div><button class='modal-close' onclick='closeModal()'>×</button></div>
       <div style='display:flex;flex-direction:column;gap:11px'>
-        <div><div class='field-lbl'>Label</div><input class='inp' id='bl-lbl' placeholder='e.g. Happy Hour — 4-6pm daily'/></div>
-        <div><div class='field-lbl'>URL</div><input class='inp' id='bl-url' placeholder='https://…'/></div>
-        <div><div class='field-lbl'>Sublabel (optional)</div><input class='inp' id='bl-sub' placeholder='Short description'/></div>
-        <button class='btn btn-primary btn-full' onclick='_saveBulletinLink()'>Add</button>
+        <div>
+          <div class='field-lbl'>Type</div>
+          <select class='sel' id='bl-type' onchange='_blToggleUrl(this.value)'>
+            <option value='custom'>🔗 Link (with URL)</option>
+            <option value='text'>📝 Text only (no link)</option>
+            <option value='spotify'>🎵 Spotify</option>
+            <option value='phone'>📞 Phone</option>
+            <option value='email'>✉️ Email</option>
+          </select>
+        </div>
+        <div><div class='field-lbl'>Title</div><input class='inp' id='bl-lbl' placeholder='e.g. Happy Hour, Weekly Special…'/></div>
+        <div id='bl-url-wrap'><div class='field-lbl'>URL</div><input class='inp' id='bl-url' placeholder='https://…'/></div>
+        <div><div class='field-lbl'>Description (optional)</div><input class='inp' id='bl-sub' placeholder='More details…'/></div>
+        <button class='btn btn-primary btn-full' onclick='_saveBulletinLink()'>Add to Bulletin</button>
       </div>`);
+    window._blToggleUrl = function(type) {
+      const wrap = $("bl-url-wrap");
+      const inp  = $("bl-url");
+      if (!wrap) return;
+      if (type === "text") {
+        wrap.style.display = "none";
+        if (inp) inp.value = "";
+      } else {
+        wrap.style.display = "block";
+        if (inp) inp.placeholder = type==="phone"?"(555) 555-5555" : type==="email"?"hello@restaurant.com" : type==="spotify"?"https://open.spotify.com/…" : "https://…";
+      }
+    };
     window._saveBulletinLink = function() {
       const label = ($("bl-lbl")||{}).value?.trim()||"";
       const url   = ($("bl-url")||{}).value?.trim()||"";
       const sub   = ($("bl-sub")||{}).value?.trim()||"";
-      if (!label || !url) { showToast("Label and URL required"); return; }
+      const type2 = ($("bl-type")||{}).value||"custom";
+      if (!label) { showToast("Title required"); return; }
+      if (type2 !== "text" && !url) { showToast("URL required for this type"); return; }
       if (!b.bulletinLinks) b.bulletinLinks = [];
-      b.bulletinLinks.push({label, url, sublabel:sub, type:"custom"});
+      b.bulletinLinks.push({label, url, sublabel:sub, type:type2});
+      biz.brand = {...biz.brand, bulletinLinks: b.bulletinLinks};
+      saveBiz(biz);
       closeModal();
       renderBulletinList();
     };
